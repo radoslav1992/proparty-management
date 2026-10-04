@@ -1,0 +1,421 @@
+---
+import Base from "../layouts/Base.astro";
+const features = [
+  [
+    "226",
+    "Rent, without the guesswork",
+    "Generate monthly rent charges, record full or partial payments, and see exactly what is outstanding.",
+  ],
+  [
+    "227",
+    "Repairs that keep moving",
+    "Capture maintenance issues, set priorities, assign a contact and follow each job through to resolution.",
+  ],
+  [
+    "228",
+    "Every lease in its place",
+    "Keep tenant details, rental dates, deposits and property documents connected.",
+  ],
+  [
+    "229",
+    "Know your real cash flow",
+    "Track expenses alongside collected rent. Export a monthly statement for every property.",
+  ],
+  [
+    "230",
+    "A helpful second pair of eyes",
+    "Ask your AI assistant about outstanding rent, open repairs, or a message you need to draft.",
+  ],
+];
+const faqs = [
+  [
+    "Who is Proparty for?",
+    "Independent landlords and small property managers looking after long-term rental units. Each apartment, house or commercial unit counts as one property.",
+  ],
+  [
+    "Does it collect rent automatically?",
+    "Payments are recorded manually in this version. Proparty tracks rent charges, partial payments and outstanding balances; it does not move tenant money.",
+  ],
+  [
+    "Can I upload property photos and leases?",
+    "Yes. Upload JPEG, PNG or WebP photos and PDF documents, up to 10 MB per file and 30 files per property. Files are private to your account.",
+  ],
+  [
+    "What can the AI assistant do?",
+    "It can answer questions using a limited snapshot of your properties, rent charges and open maintenance issues, and draft messages for you to review. It cannot change records or send messages.",
+  ],
+  [
+    "Can I start for free?",
+    "Yes. The free plan includes three rental units and five AI requests per day. You can use it without a credit card.",
+  ],
+];
+---
+
+<Base>
+  <header class="site-nav">
+    <a class="brand" href="/" aria-label="Proparty home">
+      <img src="/favicon.svg" width="34" height="34" alt="" />
+      proparty<span class="brand-dot">.</span>
+    </a>
+    <nav aria-label="Main navigation">
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#pricing">Pricing</a>
+    </nav>
+    <div class="nav-actions">
+      <a href="/login">Log in</a>
+      <a class="button small" href="/signup">
+        Get started <span>↗</span>
+      </a>
+    </div>
+  </header>
+  <main id="main">
+    <section class="hero">
+      <div class="hero-content">
+        <span
+          class="eyebrow glass"
+          data-ns-animate
+          data-instant
+          data-delay="0.1"
+        >
+          A better home for your rental business
+        </span>
+        <h1 data-ns-animate data-instant data-delay="0.2">
+          Simplify property
+          <br />
+          management.
+          <br />
+          <em>Make room for more.</em>
+        </h1>
+        <p data-ns-animate data-instant data-delay="0.3">
+          Properties, people, payments. Bring it all together
+          <br class="desktop" /> in one beautifully simple workspace.
+        </p>
+        <div class="hero-actions" data-ns-animate data-instant data-delay="0.4">
+          <a class="button" href="/signup">
+            Start your free workspace <span>↗</span>
+          </a>
+          <a class="button white" href="/demo">
+            Explore the demo <span>→</span>
+          </a>
+        </div>
+        <small data-ns-animate data-instant data-delay="0.5">
+          3 properties free · No credit card needed
+        </small>
+      </div>
+      <div class="hero-bottom">
+        <span>LESS ADMIN.</span>
+        <span>HAPPIER TENANTS.</span>
+        <span>MORE CLARITY.</span>
+      </div>
+    </section>
+    <section class="section intro">
+      <div class="section-heading" data-ns-animate>
+        <span class="eyebrow">Your portfolio, in perspective</span>
+        <h2>
+          Everything under one roof.
+          <br />
+          <span class="muted">Finally.</span>
+        </h2>
+        <p>
+          A clear view of what you own, what is due, and what needs your
+          attention. Spend less time piecing it all together.
+        </p>
+      </div>
+      <div class="benefit-strip" data-ns-animate data-delay="0.15">
+        <div>
+          <span class="round-icon yellow">⌂</span>
+          <strong>One connected workspace</strong>
+          <small>Properties, tenants & leases</small>
+        </div>
+        <div>
+          <span class="round-icon cyan">↗</span>
+          <strong>A clearer financial picture</strong>
+          <small>Rent, expenses & monthly reports</small>
+        </div>
+        <div>
+          <span class="round-icon peach">✧</span>
+          <strong>Help when you need it</strong>
+          <small>AI grounded in your workspace</small>
+        </div>
+      </div>
+    </section>
+    <section class="section split soft" id="how-it-works">
+      <div data-ns-animate>
+        <span class="eyebrow">Built around your everyday</span>
+        <h2>
+          Goodbye scattered spreadsheets.
+          <br />
+          Hello, breathing room.
+        </h2>
+        <p>
+          Your next rent payment. That leaky tap. The lease that ends next
+          month. A calmer way to keep on top of it all.
+        </p>
+        <ul class="check-list">
+          <li>A single overview of every rental unit</li>
+          <li>Clear outstanding balances and due dates</li>
+          <li>Maintenance from reported to resolved</li>
+          <li>Private photos and documents</li>
+        </ul>
+        <a href="/demo" class="text-link">
+          Take a look inside <span>↗</span>
+        </a>
+      </div>
+      <div class="illustration">
+        <img
+          data-ns-animate
+          data-direction="right"
+          class="feature-building"
+          src="/images/ns-img-236.webp"
+          alt="Property management illustration from the supplied template"
+          loading="lazy"
+        />
+        <div
+          class="floating-note"
+          data-ns-animate
+          data-direction="right"
+          data-delay="0.3"
+        >
+          <span class="round-icon">✓</span>
+          <div>
+            <strong>A place for every detail</strong>
+            <small>From the first lease to the next repair</small>
+          </div>
+        </div>
+        <div
+          class="floating-mini"
+          data-ns-animate
+          data-direction="up"
+          data-delay="0.5"
+        >
+          A little more organised. ✧
+        </div>
+      </div>
+    </section>
+    <section class="section" id="features">
+      <div class="section-heading" data-ns-animate>
+        <span class="eyebrow">Thoughtful tools. Everyday impact.</span>
+        <h2>
+          Small details.
+          <br />A big difference.
+        </h2>
+      </div>
+      <div class="features-grid">
+        {features.map(([img, title, desc], i) => (
+          <article data-ns-animate data-delay={String((i % 3) * 0.1)}>
+            <figure>
+              <img
+                src={`/images/ns-img-${img}.webp`}
+                alt={title}
+                loading="lazy"
+                width="408"
+                height="306"
+              />
+            </figure>
+            <h3>{title}</h3>
+            <p>{desc}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+    <section class="section dark-section">
+      <div class="split-inner">
+        <div data-ns-animate>
+          <span class="eyebrow">Your AI property assistant</span>
+          <h2>
+            Less searching.
+            <br />
+            More understanding.
+          </h2>
+          <p>
+            Turn the details in your workspace into clear next steps. Get a
+            quick rent summary, prioritise repairs, or find the right words for
+            a tenant reminder.
+          </p>
+          <a class="button lime" href="/signup">
+            Meet your assistant <span>✧</span>
+          </a>
+        </div>
+        <div class="chat-preview" data-ns-animate data-direction="right">
+          <div class="chat-preview-head">
+            <span>✧ Proparty assistant</span>
+            <span class="badge">Illustrative example</span>
+          </div>
+          <p class="chat-question">What should I focus on today?</p>
+          <div class="chat-answer">
+            Here is a good place to start:
+            <br />
+            <br />
+            <strong>1. Review outstanding rent</strong>
+            <br />
+            Check the balances in your rent ledger.
+            <br />
+            <br />
+            <strong>2. Follow up on urgent repairs</strong>
+            <br />
+            Open maintenance issues are organised by priority.
+            <br />
+            <br />
+            <strong>3. Prepare your next conversation</strong>
+            <br />I can help you draft a clear, friendly message.
+          </div>
+          <small>You review every suggestion. You stay in control.</small>
+        </div>
+      </div>
+    </section>
+    <section class="section">
+      <div class="section-heading" data-ns-animate>
+        <span class="eyebrow">For the portfolio you are building</span>
+        <h2>
+          From your first rental
+          <br />
+          to your next chapter.
+        </h2>
+      </div>
+      <div class="property-showcase">
+        {[
+          [
+            "232",
+            "Independent landlords",
+            "Build better habits from property one.",
+          ],
+          [
+            "233",
+            "Growing portfolios",
+            "Keep every unit and every detail connected.",
+          ],
+          [
+            "234",
+            "Small property teams",
+            "Bring more clarity to your daily operations.",
+          ],
+        ].map(([img, title, desc]) => (
+          <article data-ns-animate>
+            <img
+              src={`/images/ns-img-${img}.webp`}
+              alt={title}
+              loading="lazy"
+            />
+            <div>
+              <h3>{title}</h3>
+              <p>{desc}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+    <section class="section soft" id="pricing">
+      <div class="section-heading" data-ns-animate>
+        <span class="eyebrow">Simple plans</span>
+        <h2>
+          A little investment.
+          <br />A lot more organised.
+        </h2>
+        <p>Start with three properties, free. Paid plans are coming soon.</p>
+      </div>
+      <div class="pricing-grid">
+        {[
+          {
+            name: "Free",
+            price: "0",
+            units: "3 properties",
+            ai: "5 AI requests / day",
+            desc: "Find your rhythm.",
+          },
+          {
+            name: "Landlord",
+            price: "19",
+            units: "15 properties",
+            ai: "30 AI requests / day",
+            desc: "Room for your growing portfolio.",
+          },
+          {
+            name: "Portfolio",
+            price: "49",
+            units: "50 properties",
+            ai: "100 AI requests / day",
+            desc: "Bring a bigger picture into focus.",
+          },
+        ].map((p, i) => (
+          <article
+            class:list={{ featured: i === 1 }}
+            data-ns-animate
+            data-delay={String(i * 0.1)}
+          >
+            {i === 1 && <span class="plan-label">Room to grow</span>}
+            <h3>{p.name}</h3>
+            <p>{p.desc}</p>
+            <div class="price">
+              €{p.price}
+              <span>/ month</span>
+            </div>
+            <ul class="check-list">
+              <li>{p.units}</li>
+              <li>Tenants, leases & rent tracking</li>
+              <li>Maintenance & expense records</li>
+              <li>Private images & PDF documents</li>
+              <li>Monthly CSV reports</li>
+              <li>{p.ai}</li>
+            </ul>
+            <a
+              href="/signup"
+              class:list={["button", i === 1 ? "lime" : "outline"]}
+            >
+              Start with Free <span>↗</span>
+            </a>
+          </article>
+        ))}
+      </div>
+      <p class="pricing-note">
+        Planned monthly prices. Your checkout will confirm the total and any
+        applicable taxes. AI limits reset daily at midnight UTC.
+      </p>
+    </section>
+    <section class="section faq">
+      <div class="section-heading" data-ns-animate>
+        <span class="eyebrow">A few things you might be wondering</span>
+        <h2>
+          Good questions.
+          <br />
+          Clear answers.
+        </h2>
+      </div>
+      <div data-ns-animate>
+        {faqs.map(([q, a]) => (
+          <details>
+            <summary>
+              {q}
+              <span>+</span>
+            </summary>
+            <p>{a}</p>
+          </details>
+        ))}
+      </div>
+    </section>
+    <section class="section final-cta" data-ns-animate>
+      <span class="eyebrow">Make room for what matters</span>
+      <h2>
+        Your properties.
+        <br />A little more peace of mind.
+      </h2>
+      <a class="button" href="/signup">
+        Create your free workspace <span>↗</span>
+      </a>
+      <small>No credit card. No complicated setup.</small>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <a class="brand" href="/">
+      <img src="/favicon.svg" width="34" height="34" alt="" />
+      proparty.
+    </a>
+    <p>A calmer way to manage your rentals.</p>
+    <div>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+      <a href="/login">Log in</a>
+    </div>
+    <small>© {new Date().getFullYear()} Proparty</small>
+  </footer>
+</Base>

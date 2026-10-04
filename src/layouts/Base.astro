@@ -1,0 +1,31 @@
+---
+import "../styles/global.css";
+const {
+  title = "Proparty — A little less admin. A lot more peace of mind.",
+  description = "Manage your properties, tenants, rent and maintenance in one calm workspace.",
+  app = false,
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#172b26" />
+    <link rel="icon" href="/favicon.svg" />
+    <title>{title}</title>
+    {app && <meta name="robots" content="noindex,nofollow" />}
+  </head>
+  <body class:list={{ application: app }}>
+    <a class="skip-link" href="#main">
+      Skip to content
+    </a>
+    <slot />
+    <script is:inline src="/vendor/gsap.min.js" defer></script>
+    <script is:inline src="/vendor/scroll-trigger.min.js" defer></script>
+    <script is:inline src="/vendor/lenis.min.js" defer></script>
+    <script is:inline src="/motion.js" defer></script>
+  </body>
+</html>

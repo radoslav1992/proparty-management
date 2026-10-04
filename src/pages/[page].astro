@@ -1,0 +1,261 @@
+---
+import Base from "../layouts/Base.astro";
+const page = Astro.params.page;
+const config: Record<
+  string,
+  { title: string; subtitle: string; action: string }
+> = {
+  login: {
+    title: "Welcome back.",
+    subtitle: "Your properties are in good hands. Let’s get you signed in.",
+    action: "login",
+  },
+  signup: {
+    title: "Make yourself at home.",
+    subtitle: "Create your free workspace. Start with up to three properties.",
+    action: "register",
+  },
+  "forgot-password": {
+    title: "Let’s get you back in.",
+    subtitle: "Enter your account email to request a password reset link.",
+    action: "forgot",
+  },
+  "reset-password": {
+    title: "A fresh start.",
+    subtitle: "Choose a strong new password for your account.",
+    action: "reset",
+  },
+};
+const legal = page === "privacy" || page === "terms";
+const c = config[page || ""];
+if (!c && !legal) return Astro.redirect("/404");
+---
+
+<Base
+  title={`${legal ? (page === "privacy" ? "Privacy" : "Terms") : c.title} — Proparty`}
+  app
+>
+  {legal ? (
+    <main id="main" class="legal">
+      <a href="/" class="brand">
+        <img src="/favicon.svg" width="34" height="34" alt="" />
+        proparty.
+      </a>
+      <h1 style="margin-top:45px">
+        {page === "privacy" ? "Privacy overview" : "Using Proparty"}
+      </h1>
+      {page === "privacy" ? (
+        <>
+          <p>
+            Proparty stores the account details and property-management
+            information you enter, including tenants, leases, payments, expenses
+            and uploaded files, to provide your workspace.
+          </p>
+          <h2>Your workspace data</h2>
+          <p>
+            Application records are stored in Cloudflare D1. Photos and
+            documents are stored in a private Cloudflare R2 bucket and are
+            accessible through authenticated requests. A necessary session
+            cookie keeps you signed in.
+          </p>
+          <h2>AI assistance</h2>
+          <p>
+            When you ask the assistant a question, your question and a limited
+            snapshot of your property names, rent charges and open maintenance
+            issues are sent to Cloudflare Workers AI. Uploaded files and tenant
+            contact details are not included in that snapshot. Avoid placing
+            sensitive personal information in prompts.
+          </p>
+          <h2>Payments and email</h2>
+          <p>
+            If subscriptions are enabled, Stripe processes checkout and
+            subscription billing. Proparty does not store card numbers. Password
+            recovery emails are sent through Resend when configured by the
+            operator.
+          </p>
+          <h2>Data controls</h2>
+          <p>
+            You can edit or remove supported records in the workspace and export
+            monthly financial summaries. Contact the operator who provided this
+            service for an account export, correction or deletion request.
+          </p>
+        </>
+      ) : (
+        <>
+          <p>
+            Proparty helps you organise rental-property records. You are
+            responsible for the accuracy of information entered and for having
+            permission to store tenant information and documents.
+          </p>
+          <h2>Financial records</h2>
+          <p>
+            Rent payments are recorded manually. Proparty does not collect rent,
+            hold tenant funds, or provide accounting, tax, investment or legal
+            advice. Monthly reports show recorded cash flow, not a complete
+            accounting statement.
+          </p>
+          <h2>AI suggestions</h2>
+          <p>
+            AI answers and drafts can be inaccurate. Review them before use. The
+            assistant cannot send messages or change records.
+          </p>
+          <h2>Plans and availability</h2>
+          <p>
+            The free plan allows three properties and five AI requests per day.
+            Paid plans, when enabled, are managed through Stripe. The checkout
+            page displays the actual charge and billing terms. Cancelling a plan
+            preserves existing records but restricts adding properties above the
+            free limit.
+          </p>
+          <h2>Your responsibility</h2>
+          <p>
+            Keep your password secure and retain independent copies of important
+            documents. Do not upload unlawful content or use the service to
+            access another account’s information.
+          </p>
+        </>
+      )}
+      <p>
+        <a class="text-link" href="/">
+          Back to home →
+        </a>
+      </p>
+    </main>
+  ) : (
+    <main id="main" class="auth-page">
+      <aside class="auth-visual">
+        <a class="brand" href="/">
+          <img src="/favicon.svg" width="40" height="40" alt="" />
+          proparty.
+        </a>
+        <div>
+          <h2>
+            A little less admin.
+            <br />A lot more living.
+          </h2>
+          <p>One home for your rental business.</p>
+        </div>
+      </aside>
+      <section class="auth-panel">
+        <a class="brand" href="/">
+          <img src="/favicon.svg" width="34" height="34" alt="" />
+          proparty.
+        </a>
+        <h1>{c.title}</h1>
+        <p>{c.subtitle}</p>
+        <form class="auth-form" data-auth={c.action}>
+          {page === "signup" && (
+            <label>
+              Your name
+              <input
+                name="name"
+                required
+                maxlength="100"
+                autocomplete="name"
+                placeholder="Alex Morgan"
+              />
+            </label>
+          )}
+          {page !== "reset-password" && (
+            <label>
+              Email address
+              <input
+                name="email"
+                type="email"
+                required
+                maxlength="254"
+                autocomplete="email"
+                placeholder="you@example.com"
+              />
+            </label>
+          )}
+          {page !== "forgot-password" && (
+            <label>
+              Password
+              <input
+                name="password"
+                type="password"
+                required
+                minlength={page === "login" ? undefined : 12}
+                maxlength="128"
+                autocomplete={
+                  page === "login" ? "current-password" : "new-password"
+                }
+                placeholder={
+                  page === "login" ? "Your password" : "At least 12 characters"
+                }
+              />
+            </label>
+          )}
+          {page === "reset-password" && (
+            <input
+              type="hidden"
+              name="token"
+              value={Astro.url.searchParams.get("token") || ""}
+            />
+          )}
+          <div class="form-message" role="alert"></div>
+          <button class="button" type="submit">
+            {page === "login"
+              ? "Log in"
+              : page === "signup"
+                ? "Create free workspace"
+                : page === "forgot-password"
+                  ? "Send reset link"
+                  : "Save new password"}{" "}
+            <span>↗</span>
+          </button>
+          {page === "signup" && (
+            <small>
+              By creating an account, you agree to the{" "}
+              <a href="/terms">Terms</a> and acknowledge the{" "}
+              <a href="/privacy">Privacy overview</a>.
+            </small>
+          )}
+        </form>
+        <div class="auth-links">
+          {page === "login" ? (
+            <>
+              <a href="/signup">New here? Create an account</a>
+              <a href="/forgot-password">Forgot password?</a>
+            </>
+          ) : (
+            <a href="/login">Already have an account? Log in →</a>
+          )}
+        </div>
+      </section>
+    </main>
+  )}
+  <script>
+    document
+      .querySelector<HTMLFormElement>("[data-auth]")
+      ?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = event.currentTarget as HTMLFormElement;
+        const button = form.querySelector("button")!;
+        const message = form.querySelector(".form-message")!;
+        button.disabled = true;
+        message.textContent = "";
+        try {
+          const res = await fetch("/api/auth/" + form.dataset.auth, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(Object.fromEntries(new FormData(form))),
+          });
+          const data = (await res.json()) as {
+            error?: string;
+            message: string;
+          };
+          if (!res.ok) throw new Error(data.error || "Please try again.");
+          if (form.dataset.auth === "forgot")
+            message.textContent = data.message;
+          else
+            location.href = form.dataset.auth === "reset" ? "/login" : "/app";
+        } catch (err) {
+          message.textContent = (err as Error).message;
+        } finally {
+          button.disabled = false;
+        }
+      });
+  </script>
+</Base>

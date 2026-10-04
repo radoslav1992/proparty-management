@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.astro/
+.wrangler/
+.dev.vars
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# Unused source imagery; optimized WebP assets are tracked.
+public/images/*.png
+public/images/ns-img-235.svg
+public/images/ns-img-240.webp

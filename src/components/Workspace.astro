@@ -1,0 +1,108 @@
+---
+import "../styles/app.css";
+const { demo = false } = Astro.props;
+const menu = [
+  ["overview", "Overview", "◫"],
+  ["properties", "Properties", "⌂"],
+  ["tenants", "Tenants", "♧"],
+  ["leases", "Leases", "▤"],
+  ["rent", "Rent ledger", "↗"],
+  ["maintenance", "Maintenance", "⚒"],
+  ["expenses", "Expenses", "≋"],
+  ["documents", "Documents", "▱"],
+  ["reports", "Reports", "▥"],
+  ["assistant", "AI assistant", "✧"],
+];
+---
+
+<div class="workspace" data-demo={String(demo)}>
+  <aside class="sidebar">
+    <a class="brand" href="/">
+      <img src="/favicon.svg" width="34" height="34" alt="" />
+      proparty.
+    </a>
+    <div class="workspace-label">
+      <span class="workspace-avatar">P</span>
+      <div>
+        <strong id="workspace-name">My workspace</strong>
+        <small>Property management</small>
+      </div>
+    </div>
+    <small class="nav-caption">YOUR WORKSPACE</small>
+    <nav aria-label="Workspace navigation">
+      {menu.map(([id, title, icon]) => (
+        <a href={`?view=${id}`} data-view={id}>
+          <span aria-hidden="true">{icon}</span>
+          {title}
+          {id === "assistant" && <small class="new-badge">AI</small>}
+        </a>
+      ))}
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="plan-card">
+        <span>Room to grow</span>
+        <small id="plan-info">Free plan · 3 properties</small>
+        <a href="?view=settings" data-view="settings">
+          View your plan ↗
+        </a>
+      </div>
+      <a class="settings-link" href="?view=settings" data-view="settings">
+        ⚙ &nbsp; Settings
+      </a>
+      <button class="logout" data-action="logout">
+        ↪ &nbsp; {demo ? "Leave demo" : "Log out"}
+      </button>
+    </div>
+  </aside>
+  <div class="workspace-main">
+    <header class="app-topbar">
+      <button
+        class="menu-toggle"
+        aria-label="Toggle navigation"
+        aria-expanded="false"
+      >
+        ☰
+      </button>
+      <div class="breadcrumbs">
+        Workspace <span>/</span> <strong id="breadcrumb">Overview</strong>
+      </div>
+      <div class="topbar-right">
+        <span class="today-label" id="today-label"></span>
+        <button
+          class="avatar"
+          data-view="settings"
+          aria-label="Account settings"
+        >
+          P
+        </button>
+      </div>
+    </header>
+    {demo && (
+      <div class="demo-banner">
+        <span>
+          <strong>Demo workspace</strong> · Sample data. Changes are not saved.
+        </span>
+        <a href="/signup">Create your own workspace ↗</a>
+      </div>
+    )}
+    <main id="main" tabindex="-1">
+      <div class="loading">
+        <span class="spinner"></span>Opening your workspace…
+      </div>
+    </main>
+    <footer class="app-footer">
+      <span>Made for a little more peace of mind.</span>
+      <span>Proparty © {new Date().getFullYear()}</span>
+    </footer>
+  </div>
+</div>
+<dialog id="editor">
+  <form method="dialog" class="dialog-close">
+    <button aria-label="Close dialog">×</button>
+  </form>
+  <div id="editor-content"></div>
+</dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+<script>
+  import "../scripts/workspace";
+</script>

@@ -27,6 +27,23 @@ class DatabaseTests(unittest.TestCase):
   with self.assertRaises(sqlite3.IntegrityError):self.db.execute("INSERT INTO charges(id,user_id,lease_id,month,due_date,amount_cents) VALUES('c2','a','l','2026-10','2026-10-01',85000)")
  def test_only_one_active_lease_per_property(self):
   with self.assertRaises(sqlite3.IntegrityError):self.db.execute("INSERT INTO leases(id,user_id,property_id,tenant_id,start_date,end_date,rent_cents) VALUES('l2','a','pa','ta','2026-01-01','2026-12-31',85000)")
+ def test_initial_migration_rerun_preserves_existing_payments(self):
+  self.payment('one',30000)
+  self.db.executescript(pathlib.Path('migrations/0001_initial.sql').read_text())
+  self.assertEqual(self.balance(),30000)
+  self.assertEqual(self.db.execute('SELECT COUNT(*) FROM payments').fetchone()[0],1)
+  self.payment('two',55000)
+  self.assertEqual(self.balance(),85000)
+  with self.assertRaises(sqlite3.IntegrityError):self.payment('three',1)
+ def test_initial_migration_recovers_partial_import(self):
+  sql=pathlib.Path('migrations/0001_initial.sql').read_text()
+  with sqlite3.connect(':memory:') as db:
+   db.executescript(sql[:sql.index('CREATE TRIGGER')])
+   db.execute("INSERT INTO users(id,email,name,password_hash) VALUES('existing','existing@example.com','Existing','test')")
+   db.executescript(sql)
+   self.assertEqual(db.execute('SELECT id FROM users').fetchall(),[('existing',)])
+   self.assertEqual(db.execute("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name").fetchall(),[('payment_apply',),('payment_limit',),('payment_reverse',)])
+   self.assertIsNotNone(db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='webhook_events'").fetchone())
  def test_ai_quota_is_atomic(self):
   q='INSERT INTO ai_usage(user_id,day,count) VALUES(?,?,1) ON CONFLICT(user_id,day) DO UPDATE SET count=count+1 WHERE count<? RETURNING count'
   for i in range(5):self.assertEqual(self.db.execute(q,('a','2026-10-04',5)).fetchone()[0],i+1)

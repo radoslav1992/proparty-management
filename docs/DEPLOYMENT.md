@@ -21,9 +21,7 @@ npx wrangler d1 create proparty-management
 npx wrangler r2 bucket create proparty-management-files
 ```
 
-Paste the D1 `database_id` into the existing `d1_databases[0]` object in `wrangler.jsonc`. If using different names, update `database_name` and `bucket_name` there and the database scripts in `package.json`.
-
-A missing D1 ID is intentional while awaiting the target account. Current Wrangler supports automatic provisioning on deployment, but explicitly creating and pinning the database first makes migrations and subsequent GitHub builds deterministic.
+`wrangler.jsonc` already pins database `proparty-management` to ID `7f6ae9c1-131c-40f2-838b-c6581c618755`. Use this existing database; you do not need to create another one. If using different resources, update `database_id`, `database_name` and `bucket_name` in the config, and the database scripts in `package.json`.
 
 ## 2. Apply the schema before registration
 
@@ -32,7 +30,24 @@ npm ci
 npm run db:remote
 ```
 
-Or execute `migrations/0001_initial.sql` in the new database's D1 console. Do not skip this: the landing page can deploy successfully while registration fails because the tables do not exist.
+Run these commands in a terminal from the repository root. Authenticate with `npx wrangler login` first if needed. Do not skip this: the landing page can deploy successfully while registration fails because the tables do not exist.
+
+### Recovering from an incomplete console import
+
+Pull the latest `main` and run `npm run db:remote`. The initial migration uses `IF NOT EXISTS`, so it can complete a partially imported initial schema without dropping existing tables or rows. This is recovery for this initial schema, not a mechanism for upgrading an unrelated database schema.
+
+Alternatively, copy the complete updated `migrations/0001_initial.sql` into the D1 console for `proparty-management`. The payment-limit trigger uses a `WHEN` clause to avoid the nested `CASE ... END` pattern associated with D1's `incomplete input` parsing error. Keep each trigger together, including its final `END;`; if the console rejects a batch, use the terminal command above.
+
+Verify all three accounting triggers exist:
+
+```sql
+SELECT name FROM sqlite_master
+WHERE type = 'trigger'
+  AND name IN ('payment_limit', 'payment_apply', 'payment_reverse')
+ORDER BY name;
+```
+
+Expected: `payment_apply`, `payment_limit`, `payment_reverse`. All three are required for payment limits, balance updates and reversals.
 
 ## 3. Connect GitHub in Workers Builds
 

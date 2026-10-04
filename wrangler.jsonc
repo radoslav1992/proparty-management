@@ -10,6 +10,7 @@
     {
       "binding": "DB",
       "database_name": "proparty-management",
+      "database_id": "7f6ae9c1-131c-40f2-838b-c6581c618755",
       "migrations_dir": "migrations",
     },
   ],

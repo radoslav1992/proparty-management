@@ -43,14 +43,15 @@ const menu = [
         <span>Room to grow</span>
         <small id="plan-info">Free plan · 3 properties</small>
         <a href="?view=settings" data-view="settings">
-          View your plan ↗
+          View your plan <span aria-hidden="true">↗</span>
         </a>
       </div>
       <a class="settings-link" href="?view=settings" data-view="settings">
-        ⚙ &nbsp; Settings
+        <span aria-hidden="true">⚙</span> &nbsp; Settings
       </a>
       <button class="logout" data-action="logout">
-        ↪ &nbsp; {demo ? "Leave demo" : "Log out"}
+        <span aria-hidden="true">↪</span> &nbsp;{" "}
+        {demo ? "Leave demo" : "Log out"}
       </button>
     </div>
   </aside>
@@ -82,7 +83,9 @@ const menu = [
         <span>
           <strong>Demo workspace</strong> · Sample data. Changes are not saved.
         </span>
-        <a href="/signup">Create your own workspace ↗</a>
+        <a href="/signup">
+          Create your own workspace <span aria-hidden="true">↗</span>
+        </a>
       </div>
     )}
     <main id="main" tabindex="-1">
@@ -96,7 +99,7 @@ const menu = [
     </footer>
   </div>
 </div>
-<dialog id="editor">
+<dialog id="editor" aria-labelledby="editor-title">
   <form method="dialog" class="dialog-close">
     <button aria-label="Close dialog">×</button>
   </form>

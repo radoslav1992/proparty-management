@@ -75,6 +75,27 @@ export function csvCell(v: unknown) {
   if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return '"' + s.replaceAll('"', '""') + '"';
 }
-export function chargeDue(m: string, day: number, start: string) {
-  return [m + "-" + String(day).padStart(2, "0"), start].sort().at(-1)!;
+export function chargeDue(
+  m: string,
+  day: number,
+  start: string,
+  end = "9999-12-31",
+) {
+  const due = [m + "-" + String(day).padStart(2, "0"), start].sort().at(-1)!;
+  return due < end ? due : end;
 }
+export function subscriptionPlan(
+  status: string,
+  price: string | undefined,
+  prices: { landlord?: string; portfolio?: string },
+) {
+  if (!price || !["active", "trialing"].includes(status)) return "free";
+  return price === prices.portfolio
+    ? "portfolio"
+    : price === prices.landlord
+      ? "landlord"
+      : "free";
+}
+// Past-due and unpaid subscriptions map to the free plan but can still bill, so only these count as finished.
+export const subscriptionEnded = (status: string) =>
+  ["canceled", "incomplete_expired"].includes(status);

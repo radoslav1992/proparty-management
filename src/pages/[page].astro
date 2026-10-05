@@ -203,7 +203,7 @@ if (!c && !legal) return Astro.redirect("/404");
                 : page === "forgot-password"
                   ? "Send reset link"
                   : "Save new password"}{" "}
-            <span>↗</span>
+            <span aria-hidden="true">↗</span>
           </button>
           {page === "signup" && (
             <small>
@@ -242,11 +242,12 @@ if (!c && !legal) return Astro.redirect("/404");
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(Object.fromEntries(new FormData(form))),
           });
-          const data = (await res.json()) as {
+          const data = (await res.json().catch(() => null)) as {
             error?: string;
             message: string;
-          };
-          if (!res.ok) throw new Error(data.error || "Please try again.");
+          } | null;
+          if (!res.ok || !data)
+            throw new Error(data?.error || "Please try again.");
           if (form.dataset.auth === "forgot")
             message.textContent = data.message;
           else

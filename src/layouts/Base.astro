@@ -1,9 +1,12 @@
 ---
+import "@fontsource-variable/dm-sans";
 import "../styles/global.css";
+import dmSans from "@fontsource-variable/dm-sans/files/dm-sans-latin-wght-normal.woff2?url";
 const {
   title = "Proparty — A little less admin. A lot more peace of mind.",
   description = "Manage your properties, tenants, rent and maintenance in one calm workspace.",
   app = false,
+  motion = false,
 } = Astro.props;
 ---
 
@@ -15,6 +18,7 @@ const {
     <meta name="description" content={description} />
     <meta name="theme-color" content="#172b26" />
     <link rel="icon" href="/favicon.svg" />
+    <link rel="preload" href={dmSans} as="font" type="font/woff2" crossorigin />
     <title>{title}</title>
     {app && <meta name="robots" content="noindex,nofollow" />}
   </head>
@@ -23,9 +27,13 @@ const {
       Skip to content
     </a>
     <slot />
-    <script is:inline src="/vendor/gsap.min.js" defer></script>
-    <script is:inline src="/vendor/scroll-trigger.min.js" defer></script>
-    <script is:inline src="/vendor/lenis.min.js" defer></script>
-    <script is:inline src="/motion.js" defer></script>
+    {motion && (
+      <>
+        <script is:inline src="/vendor/gsap.min.js" defer></script>
+        <script is:inline src="/vendor/scroll-trigger.min.js" defer></script>
+        <script is:inline src="/vendor/lenis.min.js" defer></script>
+        <script is:inline src="/motion.js" defer></script>
+      </>
+    )}
   </body>
 </html>

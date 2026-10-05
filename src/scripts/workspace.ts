@@ -1,4 +1,5 @@
 import { demoWorkspace } from "../lib/demo";
+import { localDate, monthLabel } from "../lib/dates";
 type Row = Record<string, any>;
 const root = document.querySelector<HTMLElement>(".workspace")!;
 const demo = root.dataset.demo === "true";
@@ -7,7 +8,7 @@ const dialog = document.querySelector<HTMLDialogElement>("#editor")!;
 const editor = document.querySelector<HTMLElement>("#editor-content")!;
 let data: Row;
 let view = new URLSearchParams(location.search).get("view") || "overview";
-let selectedMonth = new Date().toISOString().slice(0, 7);
+let selectedMonth = localDate().slice(0, 7);
 let query = "";
 let filter = "all";
 let toastTimer: ReturnType<typeof setTimeout>;
@@ -47,7 +48,7 @@ const dateLabel = (d: string) =>
         timeZone: "UTC",
       })
     : "—";
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localDate();
 const property = (id: string) =>
   data.properties.find((p: Row) => p.id === id) || {};
 const tenant = (id: string) => data.tenants.find((t: Row) => t.id === id) || {};
@@ -64,8 +65,15 @@ const sum = (rows: Row[], field: string) =>
   rows.reduce((s, r) => s + Number(r[field] || 0), 0);
 const badge = (text: string, status = text) =>
   `<span class="badge ${esc(status)}">${esc(text.replaceAll("_", " "))}</span>`;
-const btn = (label: string, action: string, id = "", cls = "button small") =>
-  `<button class="${cls}" data-action="${action}" data-id="${esc(id)}">${label}</button>`;
+const btn = (
+  label: string,
+  action: string,
+  id = "",
+  cls = "button small",
+  ariaLabel = "",
+) =>
+  `<button class="${cls}" data-action="${action}" data-id="${esc(id)}"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ""}>${label}</button>`;
+const arrow = '<span class="glyph" aria-hidden="true">↗</span>';
 const empty = (
   title: string,
   description: string,
@@ -76,7 +84,7 @@ const empty = (
 const heading = (title: string, subtitle: string, action = "") =>
   `<div class="page-heading"><div><h1>${esc(title)}</h1><p>${esc(subtitle)}</p></div><div class="heading-actions">${action}</div></div>`;
 const stat = (label: string, value: string, note: string, icon = "↗") =>
-  `<article class="stat"><div class="stat-top"><span>${esc(label)}</span><span class="stat-icon">${icon}</span></div><strong>${value}</strong><small>${esc(note)}</small></article>`;
+  `<article class="stat"><div class="stat-top"><span>${esc(label)}</span><span class="stat-icon" aria-hidden="true">${icon}</span></div><strong>${value}</strong><small>${esc(note)}</small></article>`;
 const table = (headers: string[], rows: string[]) =>
   `<div class="panel table-wrap"><table><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
 const monthPicker = () =>
@@ -100,12 +108,12 @@ async function api(path: string, method = "GET", body?: unknown) {
     body:
       body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
   });
-  const result = (await res.json()) as Row;
-  if (!res.ok) {
+  const result = (await res.json().catch(() => null)) as Row | null;
+  if (!res.ok || !result) {
     if (res.status === 401) {
       location.href = "/login";
     }
-    throw new Error(result.error || "The request could not be completed.");
+    throw new Error(result?.error || "The request could not be completed.");
   }
   return result;
 }
@@ -190,7 +198,7 @@ function propertyCard(p: Row) {
     (f: Row) => f.property_id === p.id && f.kind === "image",
   );
   const image = photo ? "/api/files/" + photo.id : p.demo_image;
-  return `<article class="property-card"><div class="property-image">${image ? `<img src="${esc(image)}" alt="${esc(p.name)}" loading="lazy"/>` : '<span class="placeholder">⌂</span>'}${badge(l ? "Occupied" : "Vacant", l ? "green" : "vacant")}</div><div class="property-card-content"><h3>${esc(p.name)}</h3><p>${esc(p.address)}, ${esc(p.city)}</p><div class="property-meta"><span>${p.bedrooms} bed${p.bedrooms === 1 ? "" : "s"}</span><span>${p.area} m²</span><span>${esc(p.type)}</span></div><div class="property-card-bottom"><strong>${cash(l?.rent_cents || p.rent_cents)}<small> / month</small></strong>${btn("↗", "property-detail", p.id, "icon-button")}</div><small style="display:block;margin-top:10px">${t ? esc(t.name) : "Ready for your next tenant"}</small></div></article>`;
+  return `<article class="property-card"><div class="property-image">${image ? `<img src="${esc(image)}" alt="${esc(p.name)}" loading="lazy"/>` : '<span class="placeholder">⌂</span>'}${badge(l ? "Occupied" : "Vacant", l ? "green" : "vacant")}</div><div class="property-card-content"><h3>${esc(p.name)}</h3><p>${esc(p.address)}, ${esc(p.city)}</p><div class="property-meta"><span>${p.bedrooms} bed${p.bedrooms === 1 ? "" : "s"}</span><span>${p.area} m²</span><span>${esc(p.type)}</span></div><div class="property-card-bottom"><strong>${cash(l?.rent_cents || p.rent_cents)}<small> / month</small></strong>${btn("↗", "property-detail", p.id, "icon-button", `Open ${p.name}`)}</div><small style="display:block;margin-top:10px">${t ? esc(t.name) : "Ready for your next tenant"}</small></div></article>`;
 }
 function overview() {
   const f = financial(selectedMonth);
@@ -214,7 +222,7 @@ function overview() {
       "Here’s what’s happening across your rental portfolio.",
       btn("+ Add property", "new-properties"),
     ) +
-    `<div class="stat-grid">${stat("Total properties", String(data.properties.length), `${occupied} occupied · ${data.properties.length - occupied} vacant`, "⌂")}${stat("Rent collected", cash(f.received), new Date(selectedMonth + "-01").toLocaleDateString("en-GB", { month: "long", year: "numeric" }), "↗")}${stat("Outstanding rent", cash(outstanding), "Across all generated rent charges", "◷")}${stat("Open maintenance", String(data.maintenance.filter((m: Row) => m.status !== "resolved").length), "A little attention goes a long way", "⚒")}</div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><div><h2>Your cash flow</h2><p>A clear view of the last six months</p></div>${badge("6 months")}</div><div class="chart"><div class="chart-legend"><span>Rent collected</span><span>Expenses</span></div><div class="bar-chart" role="img" aria-label="Six-month recorded rent and expenses">${fs.map((f, i) => `<div class="bar-group"><div class="bar" style="height:${(f.received / max) * 100}%" title="${months[i]} rent: ${cash(f.received)}"></div><div class="bar expense" style="height:${(f.expenses / max) * 100}%" title="${months[i]} expenses: ${cash(f.expenses)}"></div></div>`).join("")}</div><div class="chart-months">${months.map((m) => `<span>${new Date(m + "-01").toLocaleDateString("en-GB", { month: "short" })}</span>`).join("")}</div></div></section><section class="panel"><div class="panel-head"><h2>Rent collection</h2>${badge(new Date(selectedMonth + "-01").toLocaleDateString("en-GB", { month: "short" }))}</div><div class="collection-card"><div class="donut" style="--percent:${ratio}"><div><strong>${ratio}%</strong><small>of this month’s charges</small></div></div><div class="collection-details"><div><span>Allocated payments</span><strong>${cash(f.allocated)}</strong></div><div><span>Still to collect</span><strong>${cash(f.charged - f.allocated)}</strong></div></div></div></section></div><div class="section-row"><h2>Your properties <span class="pill-count">${data.properties.length}</span></h2><a href="?view=properties" data-view="properties">View all properties ↗</a></div>${data.properties.length ? `<div class="property-grid">${data.properties.slice(0, 3).map(propertyCard).join("")}</div>` : `<div class="panel">${empty("Make yourself at home.", "Add your first rental unit, then connect a tenant and lease to start tracking rent.", "Add your first property", "new-properties")}</div>`}<div class="ai-nudge"><span class="round-icon">✧</span><div><h3>A helpful second pair of eyes.</h3><p>Ask about rent balances, repairs, or your next tenant message.</p></div><button class="button" data-view="assistant">Ask your assistant <span>↗</span></button></div>`
+    `<div class="stat-grid">${stat("Total properties", String(data.properties.length), `${occupied} occupied · ${data.properties.length - occupied} vacant`, "⌂")}${stat("Rent collected", cash(f.received), monthLabel(selectedMonth, { month: "long", year: "numeric" }), "↗")}${stat("Outstanding rent", cash(outstanding), "Across all generated rent charges", "◷")}${stat("Open maintenance", String(data.maintenance.filter((m: Row) => m.status !== "resolved").length), "A little attention goes a long way", "⚒")}</div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><div><h2>Your cash flow</h2><p>A clear view of the last six months</p></div>${badge("6 months")}</div><div class="chart"><div class="chart-legend"><span>Rent collected</span><span>Expenses</span></div><table class="sr-only"><caption>Rent collected and expenses, last six months</caption><thead><tr><th>Month</th><th>Rent collected</th><th>Expenses</th></tr></thead><tbody>${fs.map((f, i) => `<tr><td>${monthLabel(months[i], { month: "long", year: "numeric" })}</td><td>${cash(f.received)}</td><td>${cash(f.expenses)}</td></tr>`).join("")}</tbody></table><div class="bar-chart" aria-hidden="true">${fs.map((f, i) => `<div class="bar-group"><div class="bar" style="height:${(f.received / max) * 100}%" title="${months[i]} rent: ${cash(f.received)}"></div><div class="bar expense" style="height:${(f.expenses / max) * 100}%" title="${months[i]} expenses: ${cash(f.expenses)}"></div></div>`).join("")}</div><div class="chart-months" aria-hidden="true">${months.map((m) => `<span>${monthLabel(m, { month: "short" })}</span>`).join("")}</div></div></section><section class="panel"><div class="panel-head"><h2>Rent collection</h2>${badge(monthLabel(selectedMonth, { month: "short" }))}</div><div class="collection-card"><div class="donut" style="--percent:${ratio}"><div><strong>${ratio}%</strong><small>of this month’s charges</small></div></div><div class="collection-details"><div><span>Allocated payments</span><strong>${cash(f.allocated)}</strong></div><div><span>Still to collect</span><strong>${cash(f.charged - f.allocated)}</strong></div></div></div></section></div><div class="section-row"><h2>Your properties <span class="pill-count">${data.properties.length}</span></h2><a href="?view=properties" data-view="properties">View all properties ${arrow}</a></div>${data.properties.length ? `<div class="property-grid">${data.properties.slice(0, 3).map(propertyCard).join("")}</div>` : `<div class="panel">${empty("Make yourself at home.", "Add your first rental unit, then connect a tenant and lease to start tracking rent.", "Add your first property", "new-properties")}</div>`}<div class="ai-nudge"><span class="round-icon">✧</span><div><h3>A helpful second pair of eyes.</h3><p>Ask about rent balances, repairs, or your next tenant message.</p></div><button class="button" data-view="assistant">Ask your assistant <span aria-hidden="true">↗</span></button></div>`
   );
 }
 function properties() {
@@ -360,7 +368,7 @@ function maintenance() {
     ]
       .map(([s, label]) => {
         const rows = data.maintenance.filter((m: Row) => m.status === s);
-        return `<section class="kanban-column"><h2>${label}<span class="pill-count">${rows.length}</span></h2>${rows.length ? rows.map((m: Row) => `<article class="issue-card">${badge(m.priority)}<h3>${esc(m.title)}</h3><p>${esc(property(m.property_id).name)}</p><p>${esc(m.description.slice(0, 120))}</p><div class="issue-bottom"><span>${esc(m.assignee || "Unassigned")}</span>${btn("Open ↗", "edit-maintenance", m.id, "icon-button")}</div></article>`).join("") : "<small>No issues here.</small>"}</section>`;
+        return `<section class="kanban-column"><h2>${label}<span class="pill-count">${rows.length}</span></h2>${rows.length ? rows.map((m: Row) => `<article class="issue-card">${badge(m.priority)}<h3>${esc(m.title)}</h3><p>${esc(property(m.property_id).name)}</p><p>${esc(m.description.slice(0, 120))}</p><div class="issue-bottom"><span>${esc(m.assignee || "Unassigned")}</span>${btn(`Open ${arrow}`, "edit-maintenance", m.id, "icon-button")}</div></article>`).join("") : "<small>No issues here.</small>"}</section>`;
       })
       .join("")}</div>`
   );
@@ -410,7 +418,7 @@ function documents() {
       btn("+ Upload file", "upload-file"),
     ) +
     (data.files.length
-      ? `<div class="file-grid">${data.files.map((f: Row) => `<article class="file-card">${f.kind === "image" ? `<img src="/api/files/${esc(f.id)}" alt="${esc(f.name)}" loading="lazy"/>` : '<div class="pdf-icon">▤ PDF</div>'}<strong>${esc(f.name)}</strong><p>${esc(property(f.property_id).name)} · ${(f.size / 1024 / 1024).toFixed(2)} MB</p><div><a href="/api/files/${esc(f.id)}" target="_blank" rel="noopener">${f.kind === "image" ? "Open image" : "Download PDF"} ↗</a>${btn("Delete", "delete-files", f.id, "icon-button danger")}</div></article>`).join("")}</div>`
+      ? `<div class="file-grid">${data.files.map((f: Row) => `<article class="file-card">${f.kind === "image" ? `<img src="/api/files/${esc(f.id)}" alt="${esc(f.name)}" loading="lazy"/>` : '<div class="pdf-icon">▤ PDF</div>'}<strong>${esc(f.name)}</strong><p>${esc(property(f.property_id).name)} · ${(f.size / 1024 / 1024).toFixed(2)} MB</p><div><a href="/api/files/${esc(f.id)}" target="_blank" rel="noopener">${f.kind === "image" ? "Open image" : "Download PDF"} ${arrow}</a>${btn("Delete", "delete-files", f.id, "icon-button danger")}</div></article>`).join("")}</div>`
       : empty(
           "Your files deserve a home.",
           "Upload a property photo or a PDF lease. They will stay private to your workspace.",
@@ -474,7 +482,7 @@ function assistant() {
       "A helpful second pair of eyes.",
       `${data.aiUsage} of ${data.limits.ai} requests used today. Your allowance resets at midnight UTC.`,
     ) +
-    `<div class="assistant-layout"><div class="assistant-intro"><span class="round-icon">✧</span><h2>What can I help you untangle?</h2><p>Ask about your properties, outstanding rent or open maintenance.<br/>Or let’s find the right words for your next message.</p></div><div class="prompt-options">${["Summarise my outstanding rent.", "Which maintenance issues should I prioritise?", "Draft a friendly reminder for an overdue rent payment.", "Give me a quick overview of my portfolio."].map((p) => `<button data-prompt="${esc(p)}">${esc(p)} ↗</button>`).join("")}</div><div class="chat-messages" aria-live="polite"></div><form class="chat-form" id="ai-form"><textarea name="prompt" aria-label="Ask your property assistant" maxlength="2000" required placeholder="Ask about your workspace…"></textarea><button class="button" type="submit">Send ↗</button></form><p class="assistant-note">AI can make mistakes. Review every draft. It cannot change records or send messages.</p></div>`
+    `<div class="assistant-layout"><div class="assistant-intro"><span class="round-icon">✧</span><h2>What can I help you untangle?</h2><p>Ask about your properties, outstanding rent or open maintenance.<br/>Or let’s find the right words for your next message.</p></div><div class="prompt-options">${["Summarise my outstanding rent.", "Which maintenance issues should I prioritise?", "Draft a friendly reminder for an overdue rent payment.", "Give me a quick overview of my portfolio."].map((p) => `<button data-prompt="${esc(p)}">${esc(p)} ${arrow}</button>`).join("")}</div><div class="chat-messages" aria-live="polite"></div><form class="chat-form" id="ai-form"><textarea name="prompt" aria-label="Ask your property assistant" maxlength="2000" required placeholder="Ask about your workspace…"></textarea><button class="button" type="submit">Send ${arrow}</button></form><p class="assistant-note">AI can make mistakes. Review every draft. It cannot change records or send messages.</p></div>`
   );
 }
 function settings() {
@@ -498,11 +506,11 @@ function settings() {
     ]
       .map(
         ([p, n, d]) =>
-          `<div class="plan-option"><div><strong>${n}</strong><small>${d}</small></div><button class="button outline" data-action="checkout" data-id="${p}" ${!data.billingEnabled ? "disabled" : ""}>${p === data.user.plan ? "Current plan" : "View checkout ↗"}</button></div>`,
+          `<div class="plan-option"><div><strong>${n}</strong><small>${d}</small></div><button class="button outline" data-action="checkout" data-id="${p}" ${!data.billingEnabled || p === data.user.plan ? "disabled" : ""}>${p === data.user.plan ? "Current plan" : `View checkout ${arrow}`}</button></div>`,
       )
       .join(
         "",
-      )}</div>${data.user.stripe_customer_id ? btn("Manage subscription", "billing-portal", "", "button small outline") : ""}<p style="font-size:11px;margin-top:22px">Account: ${esc(data.user.email)}</p><a class="text-link" style="font-size:12px" href="/forgot-password">Reset your password →</a></section></div>`
+      )}</div>${data.user.stripe_subscription_id ? btn("Manage subscription", "billing-portal", "", "button small outline") : ""}<p style="font-size:11px;margin-top:22px">Account: ${esc(data.user.email)}</p><a class="text-link" style="font-size:12px" href="/forgot-password">Reset your password →</a></section></div>`
   );
 }
 function field(
@@ -536,6 +544,7 @@ function propertySelect(value = "") {
 }
 function openModal(html: string) {
   editor.innerHTML = html;
+  editor.querySelector("h2")?.setAttribute("id", "editor-title");
   if (!dialog.open) dialog.showModal();
 }
 function editForm(type: string, id = "") {
@@ -627,7 +636,7 @@ function editForm(type: string, id = "") {
         "tenant_id",
         data.tenants.map((t: Row) => [t.id, t.name]),
       ) +
-      `<div class="form-grid">${field("Start date", "start_date", today(), "date")}${field("End date", "end_date", "", "date")}</div><div class="form-grid">${field(`Monthly rent (${data.user.currency})`, "rent", available[0].rent_cents / 100, "number", true, 'min="0.01" step="0.01"')}${field(`Deposit (${data.user.currency})`, "deposit", 0, "number", true, 'min="0" step="0.01"')}</div>` +
+      `<div class="form-grid">${field("Start date", "start_date", today(), "date")}${field("End date", "end_date", "", "date")}</div><div class="form-grid">${field(`Monthly rent (${data.user.currency})`, "rent", available[0].rent_cents / 100 || "", "number", true, 'min="0.01" step="0.01"')}${field(`Deposit (${data.user.currency})`, "deposit", 0, "number", true, 'min="0" step="0.01"')}</div>` +
       field(
         "Rent due on day of month",
         "due_day",
@@ -727,7 +736,7 @@ function editForm(type: string, id = "") {
     id = "";
   }
   openModal(
-    `<div class="editor-heading"><h2>${title}</h2><p>${esc(desc)}</p></div><form class="record-form" data-record="${type}" data-id="${esc(id)}">${fields}<div class="form-message" role="alert"></div><div class="form-actions">${btn("Cancel", "close", "", "button outline")}<button class="button" type="submit">${type === "files" ? "Upload file" : "Save " + (type === "properties" ? "property" : type === "maintenance" ? "issue" : type === "payments" ? "payment" : "record")} ↗</button></div></form>`,
+    `<div class="editor-heading"><h2>${title}</h2><p>${esc(desc)}</p></div><form class="record-form" data-record="${type}" data-id="${esc(id)}">${fields}<div class="form-message" role="alert"></div><div class="form-actions">${btn("Cancel", "close", "", "button outline")}<button class="button" type="submit">${type === "files" ? "Upload file" : "Save " + (type === "properties" ? "property" : type === "maintenance" ? "issue" : type === "payments" ? "payment" : "record")} ${arrow}</button></div></form>`,
   );
 }
 function propertyDetail(id: string) {
@@ -924,6 +933,14 @@ main.addEventListener("change", (event) => {
     filter = el.value;
     render();
   }
+});
+editor.addEventListener("change", (event) => {
+  const el = event.target as HTMLSelectElement;
+  const rent = el
+    .closest("form[data-record=leases]")
+    ?.querySelector<HTMLInputElement>("[name=rent]");
+  if (rent && el.name === "property_id")
+    rent.value = String(property(el.value).rent_cents / 100 || "");
 });
 main.addEventListener("input", (event) => {
   const el = event.target as HTMLInputElement;

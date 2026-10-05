@@ -53,6 +53,16 @@ const b = await call("/api/auth/register", {
 });
 assert.ok(a.cookie);
 assert.ok(b.cookie);
+const duplicate = await call("/api/auth/register", {
+  method: "POST",
+  status: 409,
+  body: {
+    name: "Test manager A",
+    email: `test-a-${suffix}@example.com`,
+    password: "A valid test password 123",
+  },
+});
+assert.match(duplicate.data.error, /account with this email already exists/);
 await call("/api/workspace", { status: 401 });
 await call("/app", { status: 302 });
 const p = (
@@ -152,6 +162,12 @@ assert.equal(state.charges[0].paid_cents, 30010);
 await call("/api/payments/" + pay.id, { method: "DELETE", cookie: a.cookie });
 state = (await call("/api/workspace", { cookie: a.cookie })).data;
 assert.equal(state.charges[0].paid_cents, 0);
+await call("/api/payments", {
+  method: "POST",
+  cookie: a.cookie,
+  status: 201,
+  body: { charge_id: charge.id, amount: "200", paid_date: "2026-10-31" },
+});
 await call("/api/maintenance", {
   method: "POST",
   cookie: a.cookie,
@@ -222,7 +238,9 @@ const image = await fetch(base + "/api/files/" + f.id, {
 });
 assert.equal(image.status, 200);
 assert.equal(image.headers.get("content-type"), "image/webp");
-assert.match(image.headers.get("cache-control"), /no-store/);
+assert.match(image.headers.get("cache-control"), /private, max-age=86400/);
+const fresh = await call("/api/workspace", { cookie: a.cookie });
+assert.equal(fresh.headers.get("cache-control"), "no-store");
 const bad = new FormData();
 bad.set("property_id", p.id);
 bad.set(
@@ -239,7 +257,7 @@ await call("/api/files", {
 const csv = (await call("/api/reports?month=2026-10", { cookie: a.cookie }))
   .data;
 assert.ok(csv.includes("'=Formula test"));
-assert.ok(csv.includes("85.50"));
+assert.ok(csv.includes('"200.00","85.50","114.50"'));
 await call("/api/files/" + f.id, { method: "DELETE", cookie: a.cookie });
 await call("/api/files/" + f.id, { cookie: a.cookie, status: 404 });
 await call("/api/settings", {

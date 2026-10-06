@@ -1,4 +1,5 @@
 import { html, nothing, render as paint } from "lit-html";
+import { addMonths } from "../../lib/dates";
 import { demoWorkspace } from "../../lib/demo";
 import type { Workspace } from "../../lib/types";
 import { app, demo, el, isView, VIEWS, type View } from "./state";
@@ -86,26 +87,40 @@ function render() {
     void loadActivity(render);
 }
 
+function updateChrome() {
+  const data = app.data;
+  document.querySelector("#workspace-name")!.textContent =
+    data.user.company || "My workspace";
+  document.querySelector("#plan-info")!.textContent =
+    `${data.limits.label} plan · ${data.properties.length}/${data.limits.properties} properties`;
+  document.querySelector(".avatar")!.textContent = data.user.name
+    .slice(0, 1)
+    .toUpperCase();
+  document.querySelector("#today-label")!.textContent =
+    new Date().toLocaleDateString("en-GB", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+}
+/** Merges collections from the API, keeping voided charges out of every view. */
+function merge(part: Partial<Workspace>) {
+  if (part.charges) part.charges = part.charges.filter((c) => !c.voided);
+  Object.assign(app.data, part);
+  activity.state = "idle";
+}
+
 async function load() {
   try {
-    const data = (demo ? demoWorkspace() : await api("workspace")) as Workspace;
-    data.charges = data.charges.filter((c) => !c.voided);
-    app.data = data;
-    activity.state = "idle";
-    document.querySelector("#workspace-name")!.textContent =
-      data.user.company || "My workspace";
-    document.querySelector("#plan-info")!.textContent =
-      `${data.limits.label} plan · ${data.properties.length}/${data.limits.properties} properties`;
-    document.querySelector(".avatar")!.textContent = data.user.name
-      .slice(0, 1)
-      .toUpperCase();
-    document.querySelector("#today-label")!.textContent =
-      new Date().toLocaleDateString("en-GB", {
-        weekday: "short",
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      });
+    const since = app.data?.windowStart;
+    app.data = (
+      demo
+        ? demoWorkspace()
+        : await api("workspace" + (since ? "?since=" + since : ""))
+    ) as Workspace;
+    merge({ charges: app.data.charges });
+    updateChrome();
     render();
   } catch (err) {
     show(
@@ -117,6 +132,33 @@ async function load() {
       ),
     );
   }
+}
+
+// The collections each kind of change can touch; a save reloads only those.
+const AFFECTS: Record<string, (keyof Workspace)[]> = {
+  properties: ["properties", "files"],
+  tenants: ["tenants"],
+  leases: ["leases", "charges"],
+  payments: ["payments", "charges"],
+  charges: ["charges"],
+  maintenance: ["maintenance"],
+  expenses: ["expenses"],
+  files: ["files"],
+};
+async function refresh(record: string) {
+  const only = AFFECTS[record];
+  if (!only) return load();
+  merge(
+    await api(`workspace?only=${only.join(",")}&since=${app.data.windowStart}`),
+  );
+  updateChrome();
+  render();
+}
+/** Loads older payments, charges and expenses when a chosen month (or the overview's six-month chart) reaches past them. */
+async function ensureHistory(month: string) {
+  const first = addMonths(month, -5);
+  if (demo || !app.data.windowStart || first >= app.data.windowStart) return;
+  merge(await api(`workspace?only=charges,payments,expenses&since=${first}`));
 }
 
 function navigate(next: string | undefined) {
@@ -192,10 +234,11 @@ async function action(name: string, id: string, button: HTMLButtonElement) {
   button.disabled = true;
   try {
     if (name.startsWith("confirmed-delete-")) {
-      await api(name.slice(17) + "/" + id, "DELETE");
+      const type = name.slice(17);
+      await api(type + "/" + id, "DELETE");
       el.dialog.close();
       toast("Record removed.");
-      await load();
+      await refresh(type);
     }
     if (name === "resend-verification") {
       await api("account/verify-email", "POST", {});
@@ -212,7 +255,7 @@ async function action(name: string, id: string, button: HTMLButtonElement) {
     if (name === "generate-charges") {
       await api("charges/generate", "POST", { month: app.month });
       toast("Rent charges are up to date.");
-      await load();
+      await refresh("charges");
     }
     if (name === "checkout") {
       location.href = (await api("billing/checkout", "POST", { plan: id })).url;
@@ -287,7 +330,7 @@ async function submit(form: HTMLFormElement) {
       ? "File uploaded securely."
       : "Saved. One less thing to keep in your head.",
   );
-  await load();
+  await refresh(type);
 }
 
 document.addEventListener("click", async (event) => {
@@ -335,7 +378,9 @@ el.main.addEventListener("change", (event) => {
   if (input.id === "month-filter") {
     if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(input.value)) return;
     app.month = input.value;
-    render();
+    ensureHistory(app.month)
+      .catch((err) => toast((err as Error).message))
+      .finally(render);
   }
   if (input.id === "status-filter") {
     app.filter = input.value as typeof app.filter;

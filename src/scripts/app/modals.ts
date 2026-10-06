@@ -1,5 +1,6 @@
 import { html, nothing, render, type TemplateResult } from "lit-html";
 import { keyed } from "lit-html/directives/keyed.js";
+import { api } from "./api";
 import {
   EXPENSE_CATEGORIES,
   PRIORITIES,
@@ -37,6 +38,7 @@ let modalKey = 0;
 export function openModal(content: TemplateResult) {
   render(keyed(++modalKey, content), el.editor);
   if (!el.dialog.open) el.dialog.showModal();
+  return modalKey;
 }
 const intro = (title: string, description: string, cls = "") =>
   html`<div class="editor-heading ${cls}">
@@ -452,30 +454,71 @@ export function propertyDetail(id: string) {
   );
 }
 
-export function tenantStatement(id: string) {
+interface StatementCharge {
+  month: string;
+  due_date: string;
+  amount_cents: number;
+  paid_cents: number;
+  property: string;
+}
+interface StatementPayment {
+  paid_date: string;
+  amount_cents: number;
+  reference: string;
+}
+/** The same shape the statement endpoint returns, built from the demo's local data. */
+function localStatement(tenantId: string) {
+  const leases = app.data.leases.filter((l) => l.tenant_id === tenantId);
+  const charges = app.data.charges.filter((c) =>
+    leases.some((l) => l.id === c.lease_id),
+  );
+  return {
+    charges: charges.map((c) => ({
+      ...c,
+      property: property(lease(c.lease_id)?.property_id ?? "")?.name ?? "",
+    })),
+    payments: app.data.payments.filter((p) =>
+      charges.some((c) => c.id === p.charge_id),
+    ),
+  };
+}
+
+export async function tenantStatement(id: string) {
   const t = tenant(id);
   if (!t) return;
-  const leaseIds = new Set(
-    app.data.leases.filter((l) => l.tenant_id === id).map((l) => l.id),
-  );
-  const charges = app.data.charges.filter((c) => leaseIds.has(c.lease_id));
-  const chargeIds = new Set(charges.map((c) => c.id));
+  let source: { charges: StatementCharge[]; payments: StatementPayment[] };
+  if (demo) source = localStatement(id);
+  else {
+    const loading = openModal(
+      html`${intro(`Statement for ${t.name}`, "Gathering the full rent history…", "statement")}
+        <div class="loading"><span class="spinner"></span>Loading…</div>`,
+    );
+    try {
+      source = (await api(
+        `tenants/${encodeURIComponent(id)}/statement`,
+      )) as typeof source;
+    } catch (err) {
+      el.dialog.close();
+      throw err;
+    }
+    // Closed or replaced while loading: leave whatever the user moved on to.
+    if (!el.dialog.open || modalKey !== loading) return;
+  }
+  const charges = source.charges;
   // Charges sort before payments on the same day, so the running balance never dips below what was due.
   const entries = [
     ...charges.map((c) => ({
       date: c.due_date,
       order: 0,
-      text: `Rent · ${property(lease(c.lease_id)?.property_id ?? "")?.name} · ${monthLabel(c.month, { month: "short", year: "numeric" })}`,
+      text: `Rent · ${c.property} · ${monthLabel(c.month, { month: "short", year: "numeric" })}`,
       amount: c.amount_cents,
     })),
-    ...app.data.payments
-      .filter((p) => chargeIds.has(p.charge_id))
-      .map((p) => ({
-        date: p.paid_date,
-        order: 1,
-        text: `Payment${p.reference ? " · " + p.reference : ""}`,
-        amount: -p.amount_cents,
-      })),
+    ...source.payments.map((p) => ({
+      date: p.paid_date,
+      order: 1,
+      text: `Payment${p.reference ? " · " + p.reference : ""}`,
+      amount: -p.amount_cents,
+    })),
   ].sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order);
   let running = 0;
   const rows = entries.map((e) => {

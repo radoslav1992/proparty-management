@@ -146,4 +146,6 @@ export interface Workspace {
   aiUsage: number;
   emailUnverified?: boolean;
   billingEnabled: boolean;
+  /** First month of payments, charges and expenses included (unpaid charges are always included). */
+  windowStart?: string;
 }

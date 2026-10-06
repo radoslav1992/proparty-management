@@ -29,6 +29,7 @@ const confirm = async (action) => {
 };
 const seen = (selector) => page.waitForSelector(selector);
 const nextYear = new Date(Date.now() + 365 * 864e5).toISOString().slice(0, 10);
+const thisMonth = new Date().toISOString().slice(0, 7);
 try {
   for (const path of ["/", "/login", "/signup", "/privacy", "/verify-email"])
     await page.goto(base + path, { waitUntil: "networkidle" });
@@ -57,7 +58,7 @@ try {
   await go("rent");
   await seen(".arrears");
   await act("tenant-statement");
-  await seen("#editor[open] .statement");
+  await seen("#editor[open] .statement ~ .detail-info");
   await page.keyboard.press("Escape");
 
   // A new account, from first property to an ended lease.
@@ -107,9 +108,16 @@ try {
   await confirm("delete-charges");
   await seen("text=Nothing due here yet.");
 
+  // Picking an old month loads that history without errors.
+  await page.locator("#month-filter").fill("2023-01");
+  await page.locator("#month-filter").dispatchEvent("change");
+  await seen("text=Nothing due here yet.");
+  await page.locator("#month-filter").fill(thisMonth);
+  await page.locator("#month-filter").dispatchEvent("change");
+
   await go("tenants");
   await act("tenant-statement");
-  await seen("#editor[open] .statement");
+  await seen("#editor[open] .statement ~ .detail-info");
   await page.keyboard.press("Escape");
 
   await go("maintenance");

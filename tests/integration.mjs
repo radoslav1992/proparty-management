@@ -370,6 +370,51 @@ assert.deepEqual(
     .map((c) => c.month),
   ["2026-10"],
 );
+// Paid-up history older than the window loads on request; unpaid charges always load.
+const oldLease = (
+  await call("/api/leases", {
+    method: "POST",
+    cookie: a.cookie,
+    status: 201,
+    body: { ...nextLease, start_date: "2023-01-01", end_date: "2023-12-31" },
+  })
+).data;
+await call("/api/charges/generate", {
+  method: "POST",
+  cookie: a.cookie,
+  body: { month: "2023-01" },
+});
+const oldCharge = () =>
+  call("/api/workspace", { cookie: a.cookie }).then((r) =>
+    r.data.charges.find((c) => c.lease_id === oldLease.id),
+  );
+const unpaid = await oldCharge();
+assert.ok(unpaid, "unpaid charges load whatever their age");
+await call("/api/payments", {
+  method: "POST",
+  cookie: a.cookie,
+  status: 201,
+  body: { charge_id: unpaid.id, amount: "900", paid_date: "2023-01-05" },
+});
+assert.equal(await oldCharge(), undefined);
+const older = (
+  await call("/api/workspace?only=charges,payments&since=2023-01", {
+    cookie: a.cookie,
+  })
+).data;
+assert.deepEqual(Object.keys(older).sort(), [
+  "charges",
+  "payments",
+  "windowStart",
+]);
+assert.ok(older.charges.some((c) => c.id === unpaid.id));
+assert.ok(older.payments.some((p) => p.charge_id === unpaid.id));
+const statement = (
+  await call(`/api/tenants/${t.id}/statement`, { cookie: a.cookie })
+).data;
+assert.ok(statement.charges.some((c) => c.month === "2023-01"));
+assert.ok(statement.payments.some((p) => p.paid_date === "2023-01-05"));
+await call(`/api/tenants/${t.id}/statement`, { cookie: b.cookie, status: 404 });
 // Money and lease changes are kept in an account's own history.
 const history = (await call("/api/activity", { cookie: a.cookie })).data;
 const kinds = history.entries.map((e) => e.entity + ":" + e.action);

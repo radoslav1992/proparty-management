@@ -266,10 +266,82 @@ await call("/api/settings", {
   status: 400,
   body: { name: "Test", company: "Test", currency: "USD" },
 });
+// The next tenant's lease can be entered ahead of time, but not over the current one.
+const nextLease = {
+  property_id: p.id,
+  tenant_id: t.id,
+  start_date: "2026-12-01",
+  end_date: "2027-06-30",
+  rent: "900",
+  deposit: "0",
+  due_day: 1,
+};
+await call("/api/leases", {
+  method: "POST",
+  cookie: a.cookie,
+  status: 409,
+  body: nextLease,
+});
+await call("/api/leases", {
+  method: "POST",
+  cookie: a.cookie,
+  status: 201,
+  body: { ...nextLease, start_date: "2027-01-01" },
+});
+// Rent charges can be corrected or removed; removed charges stay removed.
+await call("/api/charges/generate", {
+  method: "POST",
+  cookie: a.cookie,
+  body: { month: "2026-12" },
+});
+state = (await call("/api/workspace", { cookie: a.cookie })).data;
+const december = state.charges.find((c) => c.month === "2026-12");
+await call("/api/charges/" + december.id, {
+  method: "PATCH",
+  cookie: b.cookie,
+  status: 404,
+  body: { amount: "1", due_date: "2026-12-05" },
+});
+await call("/api/charges/" + december.id, {
+  method: "PATCH",
+  cookie: a.cookie,
+  body: { amount: "700", due_date: "2026-12-05" },
+});
+state = (await call("/api/workspace", { cookie: a.cookie })).data;
+assert.equal(
+  state.charges.find((c) => c.id === december.id).amount_cents,
+  70000,
+);
+await call("/api/charges/" + charge.id, {
+  method: "DELETE",
+  cookie: a.cookie,
+  status: 409,
+});
+await call("/api/charges/" + december.id, {
+  method: "DELETE",
+  cookie: a.cookie,
+});
+await call("/api/charges/generate", {
+  method: "POST",
+  cookie: a.cookie,
+  body: { month: "2026-12" },
+});
+await call("/api/payments", {
+  method: "POST",
+  cookie: a.cookie,
+  status: 409,
+  body: { charge_id: december.id, amount: "1", paid_date: "2026-12-05" },
+});
+state = (await call("/api/workspace", { cookie: a.cookie })).data;
+assert.deepEqual(
+  state.charges.filter((c) => c.month === "2026-12").map((c) => c.voided),
+  [1],
+);
+// Lease terms can be edited; ending early removes later unpaid charges.
 await call("/api/leases/" + l.id, {
   method: "PATCH",
   cookie: a.cookie,
-  body: { status: "ended" },
+  body: { rent: "875", deposit: "850", due_day: 5, end_date: "2026-12-31" },
 });
 await call("/api/charges/generate", {
   method: "POST",
@@ -277,7 +349,27 @@ await call("/api/charges/generate", {
   body: { month: "2026-11" },
 });
 state = (await call("/api/workspace", { cookie: a.cookie })).data;
-assert.equal(state.charges.length, 1);
+const november = state.charges.find((c) => c.month === "2026-11");
+assert.equal(november.amount_cents, 87500);
+assert.equal(november.due_date, "2026-11-05");
+await call("/api/leases/" + l.id, {
+  method: "PATCH",
+  cookie: a.cookie,
+  status: 400,
+  body: { end_date: "2025-12-31" },
+});
+await call("/api/leases/" + l.id, {
+  method: "PATCH",
+  cookie: a.cookie,
+  body: { status: "ended", end_date: "2026-10-31" },
+});
+state = (await call("/api/workspace", { cookie: a.cookie })).data;
+assert.deepEqual(
+  state.charges
+    .filter((c) => c.lease_id === l.id && !c.voided)
+    .map((c) => c.month),
+  ["2026-10"],
+);
 await call("/api/auth/logout", { method: "POST", cookie: a.cookie, body: {} });
 await call("/api/workspace", { cookie: a.cookie, status: 401 });
 for (const path of ["/", "/demo", "/signup", "/login", "/privacy", "/terms"])

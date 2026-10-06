@@ -120,6 +120,7 @@ async function api(path: string, method = "GET", body?: unknown) {
 async function load() {
   try {
     data = demo ? demoWorkspace() : await api("workspace");
+    data.charges = data.charges.filter((c: Row) => !c.voided);
     document.querySelector("#workspace-name")!.textContent =
       data.user.company || "My workspace";
     document.querySelector("#plan-info")!.textContent =
@@ -287,7 +288,7 @@ function leases() {
           ],
           data.leases.map(
             (l: Row) =>
-              `<tr><td><strong>${esc(property(l.property_id).name)}</strong><small>${esc(tenant(l.tenant_id).name)}</small></td><td>${dateLabel(l.start_date)}<small>to ${dateLabel(l.end_date)}</small></td><td>${cash(l.rent_cents)}<small>Due on day ${l.due_day}</small></td><td>${cash(l.deposit_cents)}</td><td>${badge(l.status === "active" && l.end_date < today() ? "Expired" : l.status)}</td><td>${l.status === "active" ? btn("End lease", "end-lease", l.id, "icon-button") : "History retained"}</td></tr>`,
+              `<tr><td><strong>${esc(property(l.property_id).name)}</strong><small>${esc(tenant(l.tenant_id).name)}</small></td><td>${dateLabel(l.start_date)}<small>to ${dateLabel(l.end_date)}</small></td><td>${cash(l.rent_cents)}<small>Due on day ${l.due_day}</small></td><td>${cash(l.deposit_cents)}</td><td>${leaseBadge(l)}</td><td>${l.status === "active" ? `<div class="action-inline">${btn("Edit", "edit-leases", l.id, "icon-button")}${btn("End lease", "end-lease", l.id, "icon-button")}</div>` : "History retained"}</td></tr>`,
           ),
         )
       : empty(
@@ -297,6 +298,11 @@ function leases() {
           "new-leases",
         ))
   );
+}
+function leaseBadge(l: Row) {
+  if (l.status !== "active") return badge("ended");
+  if (l.end_date < today()) return badge("Expired");
+  return l.start_date > today() ? badge("Upcoming") : badge("active");
 }
 function chargeStatus(c: Row) {
   return c.paid_cents >= c.amount_cents
@@ -329,7 +335,7 @@ function rent() {
           ],
           f.charges.map((c: Row) => {
             const l = lease(c.lease_id);
-            return `<tr><td><strong>${esc(property(l.property_id).name)}</strong><small>${esc(tenant(l.tenant_id).name)}</small></td><td>${dateLabel(c.due_date)}</td><td>${cash(c.amount_cents)}</td><td>${cash(c.paid_cents)}</td><td>${cash(c.amount_cents - c.paid_cents)}</td><td>${badge(chargeStatus(c))}</td><td>${c.paid_cents < c.amount_cents ? btn("Record payment", "record-payment", c.id, "button small outline") : ""}</td></tr>`;
+            return `<tr><td><strong>${esc(property(l.property_id).name)}</strong><small>${esc(tenant(l.tenant_id).name)}</small></td><td>${dateLabel(c.due_date)}</td><td>${cash(c.amount_cents)}</td><td>${cash(c.paid_cents)}</td><td>${cash(c.amount_cents - c.paid_cents)}</td><td>${badge(chargeStatus(c))}</td><td><div class="action-inline">${c.paid_cents < c.amount_cents ? btn("Record payment", "record-payment", c.id, "button small outline") : ""}${btn("Edit", "edit-charges", c.id, "icon-button")}${c.paid_cents === 0 ? btn("Remove", "delete-charges", c.id, "icon-button danger") : ""}</div></td></tr>`;
           }),
         )
       : empty(
@@ -612,19 +618,16 @@ function editForm(type: string, id = "") {
       field("Phone", "phone", r.phone, "tel", false, 'maxlength="60"') +
       area("Notes", "notes", r.notes);
   }
-  if (type === "leases") {
+  if (type === "leases" && id) {
+    title = "Edit lease";
+    desc = `${property(r.property_id).name} · ${tenant(r.tenant_id).name}`;
+    fields =
+      `<div class="form-grid">${field(`Monthly rent (${data.user.currency})`, "rent", r.rent_cents / 100, "number", true, 'min="0.01" step="0.01"')}${field(`Deposit (${data.user.currency})`, "deposit", r.deposit_cents / 100, "number", true, 'min="0" step="0.01"')}</div><div class="form-grid">${field("Rent due on day of month", "due_day", r.due_day, "number", true, 'min="1" max="28"')}${field("End date", "end_date", r.end_date, "date", true, `min="${esc(r.start_date)}"`)}</div>` +
+      "<small>New rent applies to charges generated from now on; edit existing charges in the Rent ledger. Unpaid charges after a shortened end date are removed.</small>";
+  } else if (type === "leases") {
     title = "Connect the details.";
     desc = "Create an agreement between a property and a tenant.";
-    const available = data.properties.filter(
-      (p: Row) =>
-        !data.leases.some(
-          (l: Row) => l.property_id === p.id && l.status === "active",
-        ),
-    );
-    if (!available.length) {
-      toast("All properties have an active lease. End one or add a property.");
-      return;
-    }
+    const available = data.properties;
     fields =
       select(
         "Property",
@@ -645,7 +648,36 @@ function editForm(type: string, id = "") {
         true,
         'min="1" max="28"',
       ) +
-      "<small>Charges use full monthly rent, including first and last months. Generate them from the Rent ledger.</small>";
+      "<small>Charges use full monthly rent, including first and last months. You can add the next tenant's lease before the current one ends, as long as the dates do not overlap.</small>";
+  }
+  if (type === "end-lease") {
+    const l = lease(id);
+    if (!l.id) return;
+    const last = [today(), l.end_date].sort()[0];
+    title = "End this lease?";
+    desc = `${property(l.property_id).name} · ${tenant(l.tenant_id).name}`;
+    fields =
+      `<input type="hidden" name="status" value="ended"/>` +
+      field(
+        "Last day of the tenancy",
+        "end_date",
+        last < l.start_date ? l.start_date : last,
+        "date",
+        true,
+        `min="${esc(l.start_date)}" max="${esc(l.end_date)}"`,
+      ) +
+      "<small>Charges and payments so far are kept. Unpaid charges for months after this date are removed, and no new ones are generated.</small>";
+  }
+  if (type === "charges") {
+    if (!r.id) return;
+    const l = lease(r.lease_id);
+    title = "Edit rent charge";
+    desc = `${property(l.property_id).name} · ${tenant(l.tenant_id).name} · ${monthLabel(r.month, { month: "long", year: "numeric" })}`;
+    fields =
+      `<div class="form-grid">${field(`Amount (${data.user.currency})`, "amount", r.amount_cents / 100, "number", true, `min="${Math.max(r.paid_cents / 100, 0.01)}" step="0.01"`)}${field("Due date", "due_date", r.due_date, "date")}</div>` +
+      (r.paid_cents
+        ? `<small>${cash(r.paid_cents)} has already been paid, so the amount cannot go below that.</small>`
+        : "");
   }
   if (type === "maintenance") {
     title = id ? "Keep things moving." : "What needs a little attention?";
@@ -736,7 +768,7 @@ function editForm(type: string, id = "") {
     id = "";
   }
   openModal(
-    `<div class="editor-heading"><h2>${title}</h2><p>${esc(desc)}</p></div><form class="record-form" data-record="${type}" data-id="${esc(id)}">${fields}<div class="form-message" role="alert"></div><div class="form-actions">${btn("Cancel", "close", "", "button outline")}<button class="button" type="submit">${type === "files" ? "Upload file" : "Save " + (type === "properties" ? "property" : type === "maintenance" ? "issue" : type === "payments" ? "payment" : "record")} ${arrow}</button></div></form>`,
+    `<div class="editor-heading"><h2>${title}</h2><p>${esc(desc)}</p></div><form class="record-form" data-record="${type === "end-lease" ? "leases" : type}" data-id="${esc(id)}">${fields}<div class="form-message" role="alert"></div><div class="form-actions">${btn("Cancel", "close", "", "button outline")}<button class="button" type="submit">${type === "files" ? "Upload file" : type === "end-lease" ? "End lease" : "Save " + (type === "properties" ? "property" : type === "maintenance" ? "issue" : type === "payments" ? "payment" : type === "charges" ? "charge" : type === "leases" ? "lease" : "record")} ${arrow}</button></div></form>`,
   );
 }
 function propertyDetail(id: string) {
@@ -830,22 +862,23 @@ async function action(action: string, id = "", el?: HTMLButtonElement) {
   if (action.startsWith("delete-")) {
     const type = action.slice(7);
     confirmAction(
-      type === "payments" ? "Reverse this payment?" : "Delete this record?",
+      type === "payments"
+        ? "Reverse this payment?"
+        : type === "charges"
+          ? "Remove this rent charge?"
+          : "Delete this record?",
       type === "payments"
         ? "The payment will be removed and its rent balance restored."
-        : "This cannot be undone. Linked financial history may prevent deletion.",
+        : type === "charges"
+          ? "It will no longer count toward balances, and monthly generation will not recreate it."
+          : "This cannot be undone. Linked financial history may prevent deletion.",
       "confirmed-delete-" + type,
       id,
     );
     return;
   }
   if (action === "end-lease") {
-    confirmAction(
-      "End this lease?",
-      "Existing rent charges and payments are kept. No new monthly charges will be generated for this lease.",
-      "confirmed-end-lease",
-      id,
-    );
+    editForm("end-lease", id);
     return;
   }
   if (el) el.disabled = true;
@@ -854,12 +887,6 @@ async function action(action: string, id = "", el?: HTMLButtonElement) {
       await api(action.slice(17) + "/" + id, "DELETE");
       dialog.close();
       toast("Record removed.");
-      await load();
-    }
-    if (action === "confirmed-end-lease") {
-      await api("leases/" + id, "PATCH", { status: "ended" });
-      dialog.close();
-      toast("Lease ended.");
       await load();
     }
     if (action === "generate-charges") {

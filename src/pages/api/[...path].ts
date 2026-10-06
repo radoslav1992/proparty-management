@@ -43,13 +43,17 @@ export const ALL: APIRoute = async (ctx) => {
       return json({ error: err.message }, err.status);
     const message = String(err);
     if (message.includes("UNIQUE constraint"))
+      return json({ error: "This record already exists." }, 409);
+    if (message.includes("overlap an active lease"))
       return json(
         {
           error:
-            "This record already exists, or the property already has an active lease.",
+            "These dates overlap another active lease for this property. End or shorten that lease first.",
         },
         409,
       );
+    if (message.includes("Charge is voided"))
+      return json({ error: "This rent charge has been removed." }, 409);
     if (message.includes("FOREIGN KEY"))
       return json(
         {
@@ -476,7 +480,7 @@ async function handle(ctx: APIContext) {
         .bind(userId),
       db
         .prepare(
-          "SELECT c.month,c.amount_cents,c.paid_cents,c.due_date,p.name AS property FROM charges c JOIN leases l ON c.lease_id=l.id JOIN properties p ON l.property_id=p.id WHERE c.user_id=? ORDER BY c.due_date DESC LIMIT 80",
+          "SELECT c.month,c.amount_cents,c.paid_cents,c.due_date,p.name AS property FROM charges c JOIN leases l ON c.lease_id=l.id JOIN properties p ON l.property_id=p.id WHERE c.user_id=? AND c.voided=0 ORDER BY c.due_date DESC LIMIT 80",
         )
         .bind(userId),
       db
@@ -618,6 +622,42 @@ async function handle(ctx: APIContext) {
       return json({ id: fileId }, 201);
     }
   }
+  if (table === "charges" && id) {
+    const c = await owned("charges", id);
+    if (c.voided) throw new HttpError(404, "Record not found.");
+    if (method === "DELETE") {
+      // Voided rather than deleted, so monthly generation never recreates it.
+      const r = await db
+        .prepare(
+          "UPDATE charges SET voided=1 WHERE id=? AND user_id=? AND paid_cents=0",
+        )
+        .bind(id, userId)
+        .run();
+      if (!r.meta.changes)
+        throw new HttpError(
+          409,
+          "Reverse this charge's payments before removing it.",
+        );
+      return json({ ok: true });
+    }
+    if (method === "PATCH") {
+      const b = await body(request);
+      const amount = money(b.amount);
+      if (amount < c.paid_cents)
+        throw new HttpError(
+          400,
+          "The amount cannot be less than what has already been paid.",
+        );
+      await db
+        .prepare(
+          "UPDATE charges SET amount_cents=?,due_date=? WHERE id=? AND user_id=?",
+        )
+        .bind(amount, date(b.due_date), id, userId)
+        .run();
+      return json({ id });
+    }
+    throw new HttpError(405, "Method not allowed.");
+  }
   const tables = [
     "properties",
     "tenants",
@@ -666,7 +706,7 @@ async function handle(ctx: APIContext) {
     throw new HttpError(405, "Method not allowed.");
   if ((method === "POST" && id) || (method === "PATCH" && !id))
     throw new HttpError(400, "Invalid record URL.");
-  if (id) await owned(table, id);
+  const existing = id ? await owned(table, id) : null;
   const b = await body(request);
   let values: Record<string, any> = {};
   if (table === "properties") {
@@ -704,8 +744,18 @@ async function handle(ctx: APIContext) {
       throw new HttpError(400, "Invalid email.");
   }
   if (table === "leases") {
-    if (id) {
-      values = { status: choice(b.status, ["active", "ended"]) };
+    if (existing) {
+      if (b.status !== undefined)
+        values.status = choice(b.status, ["active", "ended"]);
+      if (b.end_date !== undefined) values.end_date = date(b.end_date);
+      if (b.rent !== undefined) values.rent_cents = money(b.rent);
+      if (b.deposit !== undefined)
+        values.deposit_cents = money(b.deposit || 0, true);
+      if (b.due_day !== undefined) values.due_day = integer(b.due_day, 1, 28);
+      if (!Object.keys(values).length)
+        throw new HttpError(400, "Nothing to update.");
+      if ((values.end_date ?? existing.end_date) < existing.start_date)
+        throw new HttpError(400, "Lease end must be after its start.");
     } else {
       await owned("properties", b.property_id);
       await owned("tenants", b.tenant_id);
@@ -765,12 +815,23 @@ async function handle(ctx: APIContext) {
   }
   const keys = Object.keys(values);
   if (id) {
-    await db
-      .prepare(
-        `UPDATE ${table} SET ${keys.map((k) => k + "=?").join(",")} WHERE id=? AND user_id=?`,
-      )
-      .bind(...Object.values(values), id, userId)
-      .run();
+    const statements = [
+      db
+        .prepare(
+          `UPDATE ${table} SET ${keys.map((k) => k + "=?").join(",")} WHERE id=? AND user_id=?`,
+        )
+        .bind(...Object.values(values), id, userId),
+    ];
+    // Unpaid charges after a shortened lease's last month no longer apply. They are deleted, not voided, so extending the lease again regenerates them.
+    if (table === "leases" && values.end_date)
+      statements.push(
+        db
+          .prepare(
+            "DELETE FROM charges WHERE lease_id=? AND user_id=? AND month>? AND paid_cents=0",
+          )
+          .bind(id, userId, values.end_date.slice(0, 7)),
+      );
+    await db.batch(statements);
     return json({ id });
   }
   const recordId = uid();

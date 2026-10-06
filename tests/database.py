@@ -25,8 +25,15 @@ class DatabaseTests(unittest.TestCase):
   with self.assertRaises(sqlite3.IntegrityError):self.db.execute("INSERT INTO maintenance(id,user_id,property_id,title) VALUES('m','a','pb','Bad')")
  def test_month_is_unique(self):
   with self.assertRaises(sqlite3.IntegrityError):self.db.execute("INSERT INTO charges(id,user_id,lease_id,month,due_date,amount_cents) VALUES('c2','a','l','2026-10','2026-10-01',85000)")
- def test_only_one_active_lease_per_property(self):
-  with self.assertRaises(sqlite3.IntegrityError):self.db.execute("INSERT INTO leases(id,user_id,property_id,tenant_id,start_date,end_date,rent_cents) VALUES('l2','a','pa','ta','2026-01-01','2026-12-31',85000)")
+ def test_active_leases_cannot_overlap(self):
+  q='INSERT INTO leases(id,user_id,property_id,tenant_id,start_date,end_date,rent_cents) VALUES(?,?,?,?,?,?,?)'
+  with self.assertRaises(sqlite3.IntegrityError):self.db.execute(q,('l2','a','pa','ta','2026-12-01','2027-06-30',85000))
+  self.db.execute(q,('l3','a','pa','ta','2027-01-01','2027-12-31',85000))
+  with self.assertRaises(sqlite3.IntegrityError):self.db.execute("UPDATE leases SET end_date='2027-01-15' WHERE id='l'")
+  self.db.execute("UPDATE leases SET status='ended' WHERE id='l'")
+ def test_voided_charge_rejects_payments(self):
+  self.db.execute("UPDATE charges SET voided=1 WHERE id='c'")
+  with self.assertRaises(sqlite3.IntegrityError):self.payment('one',100)
  def test_initial_migration_rerun_preserves_existing_payments(self):
   self.payment('one',30000)
   self.db.executescript(pathlib.Path('migrations/0001_initial.sql').read_text())

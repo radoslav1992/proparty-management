@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "proparty-management",
-  "main": "@astrojs/cloudflare/entrypoints/server",
+  "main": "./src/worker.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "keep_vars": true,
@@ -18,5 +18,7 @@
     { "binding": "PROPERTY_FILES", "bucket_name": "proparty-management-files" },
   ],
   "ai": { "binding": "AI" },
+  // Daily housekeeping and rent charge generation (src/lib/jobs.ts), 03:17 UTC.
+  "triggers": { "crons": ["17 3 * * *"] },
   "observability": { "enabled": true },
 }

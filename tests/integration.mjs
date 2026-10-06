@@ -370,6 +370,73 @@ assert.deepEqual(
     .map((c) => c.month),
   ["2026-10"],
 );
+// Due dates stay inside the lease: moved forward to its start, back to its end.
+const property = (name) =>
+  call("/api/properties", {
+    method: "POST",
+    cookie: a.cookie,
+    status: 201,
+    body: {
+      name,
+      address: "2 Test Street",
+      city: "Sofia",
+      type: "Studio",
+      bedrooms: 1,
+      area: 30,
+      rent: "500",
+    },
+  }).then((r) => r.data);
+const leaseOn = (propertyId, start_date, end_date, due_day) =>
+  call("/api/leases", {
+    method: "POST",
+    cookie: a.cookie,
+    status: 201,
+    body: {
+      property_id: propertyId,
+      tenant_id: t.id,
+      start_date,
+      end_date,
+      rent: "500",
+      deposit: "0",
+      due_day,
+    },
+  }).then((r) => r.data);
+const short = await leaseOn(
+  (await property("Short stay")).id,
+  "2026-10-15",
+  "2026-11-10",
+  12,
+);
+for (const month of ["2026-10", "2026-11"])
+  await call("/api/charges/generate", {
+    method: "POST",
+    cookie: a.cookie,
+    body: { month },
+  });
+state = (await call("/api/workspace", { cookie: a.cookie })).data;
+assert.deepEqual(
+  state.charges
+    .filter((c) => c.lease_id === short.id)
+    .map((c) => c.due_date)
+    .sort(),
+  ["2026-10-15", "2026-11-10"],
+);
+// The daily job ends leases past their last day and creates this month's charges.
+const day = (offset) =>
+  new Date(Date.now() + offset * 864e5).toISOString().slice(0, 10);
+const cronProperty = await property("Cron test");
+const expired = await leaseOn(cronProperty.id, day(-60), day(-1), 1);
+const current = await leaseOn(cronProperty.id, day(0), day(60), 28);
+const cron = await fetch(base + "/cdn-cgi/handler/scheduled?cron=17+3+*+*+*");
+assert.equal(cron.status, 200);
+state = (await call("/api/workspace", { cookie: a.cookie })).data;
+assert.equal(state.leases.find((x) => x.id === expired.id).status, "ended");
+const thisMonth = day(0).slice(0, 7);
+assert.equal(
+  state.charges.find((c) => c.lease_id === current.id && c.month === thisMonth)
+    ?.due_date,
+  [thisMonth + "-28", day(0)].sort().at(-1),
+);
 await call("/api/auth/logout", { method: "POST", cookie: a.cookie, body: {} });
 await call("/api/workspace", { cookie: a.cookie, status: 401 });
 for (const path of ["/", "/demo", "/signup", "/login", "/privacy", "/terms"])

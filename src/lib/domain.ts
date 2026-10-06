@@ -75,15 +75,6 @@ export function csvCell(v: unknown) {
   if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return '"' + s.replaceAll('"', '""') + '"';
 }
-export function chargeDue(
-  m: string,
-  day: number,
-  start: string,
-  end = "9999-12-31",
-) {
-  const due = [m + "-" + String(day).padStart(2, "0"), start].sort().at(-1)!;
-  return due < end ? due : end;
-}
 export function subscriptionPlan(
   status: string,
   price: string | undefined,

@@ -16,6 +16,7 @@ const worker = spawn(
     "--persist-to",
     process.cwd() + "/.wrangler/state",
     "--local",
+    "--test-scheduled",
   ],
   { stdio: ["ignore", "pipe", "pipe"] },
 );

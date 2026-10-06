@@ -4,7 +4,6 @@ import {
   money,
   date,
   month,
-  chargeDue,
   csvCell,
   integer,
   subscriptionPlan,
@@ -25,12 +24,6 @@ test("dates reject rollover and preserve leap days", () => {
 test("month and due-day validation protect recurring charges", () => {
   assert.equal(month("2026-10"), "2026-10");
   assert.throws(() => month("2026-13"));
-  assert.equal(chargeDue("2026-10", 1, "2026-10-15"), "2026-10-15");
-  assert.equal(chargeDue("2026-10", 5, "2026-01-01"), "2026-10-05");
-  assert.equal(
-    chargeDue("2026-03", 15, "2026-01-01", "2026-03-05"),
-    "2026-03-05",
-  );
   assert.throws(() => integer(29, 1, 28));
 });
 test("CSV neutralises formulas and escapes quotes", () => {

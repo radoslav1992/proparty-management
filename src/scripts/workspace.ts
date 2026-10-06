@@ -321,7 +321,7 @@ function rent() {
       "Generate charges for active leases. Record payments when they arrive.",
       monthPicker() + btn("Generate charges", "generate-charges"),
     ) +
-    `<div class="stat-grid">${stat("Charged this month", cash(f.charged), `${f.charges.length} rent charges`)}${stat("Allocated to charges", cash(f.allocated), "Includes payments on any date")}${stat("Outstanding", cash(f.charged - f.allocated), "For this month’s charges", "◷")}${stat("Cash received", cash(f.received), "Payments recorded this month")}</div><p class="month-caption">Monthly charges use the full lease rent; partial months are not prorated. Generation is safe to repeat.</p>` +
+    `<div class="stat-grid">${stat("Charged this month", cash(f.charged), `${f.charges.length} rent charges`)}${stat("Allocated to charges", cash(f.allocated), "Includes payments on any date")}${stat("Outstanding", cash(f.charged - f.allocated), "For this month’s charges", "◷")}${stat("Cash received", cash(f.received), "Payments recorded this month")}</div><p class="month-caption">This month's charges are created automatically each day for active leases. Generate other months here; it is safe to repeat. Charges use the full lease rent; partial months are not prorated.</p>` +
     (f.charges.length
       ? table(
           [

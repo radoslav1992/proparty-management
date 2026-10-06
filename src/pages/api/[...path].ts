@@ -11,7 +11,6 @@ import {
   uid,
   today,
   csvCell,
-  chargeDue,
   planFor,
   subscriptionEnded,
 } from "../../lib/domain";
@@ -23,6 +22,7 @@ import {
   rateLimit,
 } from "../../lib/auth";
 import { stripe, webhook } from "../../lib/billing";
+import { generateCharges } from "../../lib/jobs";
 const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), {
     status,
@@ -372,29 +372,7 @@ async function handle(ctx: APIContext) {
   if (path === "charges/generate" && method === "POST") {
     const b = await body(request);
     const m = month(b.month);
-    const leases = await db
-      .prepare(
-        "SELECT * FROM leases WHERE user_id=? AND status='active' AND substr(start_date,1,7)<=? AND substr(end_date,1,7)>=?",
-      )
-      .bind(userId, m, m)
-      .all<any>();
-    if (leases.results.length)
-      await db.batch(
-        leases.results.map((l) =>
-          db
-            .prepare(
-              "INSERT OR IGNORE INTO charges(id,user_id,lease_id,month,due_date,amount_cents) VALUES(?,?,?,?,?,?)",
-            )
-            .bind(
-              uid(),
-              userId,
-              l.id,
-              m,
-              chargeDue(m, l.due_day, l.start_date, l.end_date),
-              l.rent_cents,
-            ),
-        ),
-      );
+    await generateCharges(db, m, userId).run();
     return json({ ok: true });
   }
   if (path === "reports" && method === "GET") {

@@ -11,6 +11,7 @@ export const VIEWS = {
   expenses: "Expenses",
   documents: "Documents",
   reports: "Reports",
+  activity: "Activity",
   assistant: "AI assistant",
   settings: "Settings",
 } as const;

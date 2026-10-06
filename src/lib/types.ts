@@ -109,6 +109,22 @@ export interface FileRecord {
   kind: "image" | "document";
   created_at?: string;
 }
+/** One row of the append-only history; `detail` is a JSON object whose keys depend on entity and action. */
+export interface AuditEntry {
+  id: number;
+  at: string;
+  entity: "payment" | "charge" | "lease";
+  entity_id: string;
+  action:
+    | "recorded"
+    | "reversed"
+    | "created"
+    | "changed"
+    | "voided"
+    | "deleted"
+    | "ended";
+  detail: string;
+}
 export interface PlanLimits {
   properties: number;
   ai: number;

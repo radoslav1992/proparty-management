@@ -370,6 +370,22 @@ assert.deepEqual(
     .map((c) => c.month),
   ["2026-10"],
 );
+// Money and lease changes are kept in an account's own history.
+const history = (await call("/api/activity", { cookie: a.cookie })).data;
+const kinds = history.entries.map((e) => e.entity + ":" + e.action);
+for (const kind of [
+  "payment:recorded",
+  "payment:reversed",
+  "charge:changed",
+  "charge:voided",
+  "lease:changed",
+  "lease:ended",
+])
+  assert.ok(kinds.includes(kind), kind);
+assert.equal(
+  (await call("/api/activity", { cookie: b.cookie })).data.entries.length,
+  0,
+);
 // Due dates stay inside the lease: moved forward to its start, back to its end.
 const property = (name) =>
   call("/api/properties", {

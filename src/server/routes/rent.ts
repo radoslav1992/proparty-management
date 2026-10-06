@@ -22,7 +22,7 @@ export const rentRoutes = [
       );
     await c.db
       .prepare(
-        "UPDATE charges SET amount_cents=?,due_date=? WHERE id=? AND user_id=?",
+        "UPDATE charges SET amount_cents=?,due_date=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?",
       )
       .bind(input.amount_cents, input.due_date, id, c.userId)
       .run();
@@ -34,7 +34,7 @@ export const rentRoutes = [
     if (charge.voided) throw new HttpError(404, "Record not found.");
     const r = await c.db
       .prepare(
-        "UPDATE charges SET voided=1 WHERE id=? AND user_id=? AND paid_cents=0",
+        "UPDATE charges SET voided=1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=? AND paid_cents=0",
       )
       .bind(id, c.userId)
       .run();

@@ -45,6 +45,7 @@ try {
     "expenses",
     "documents",
     "reports",
+    "activity",
     "assistant",
     "settings",
   ])
@@ -142,6 +143,8 @@ try {
   await save();
   await seen("text=History retained");
 
+  await go("activity");
+  await seen("td:has-text('Payment reversed')");
   await go("reports");
   await seen("td strong:text('Smoke Flat')");
   await go("assistant");

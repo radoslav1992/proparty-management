@@ -55,6 +55,21 @@ class DatabaseTests(unittest.TestCase):
   for t in ['properties','tenants','leases','charges','payments','maintenance','expenses','files']:
    plan=' '.join(r[3] for r in self.db.execute(f'EXPLAIN QUERY PLAN SELECT * FROM {t} WHERE user_id=?',('a',)))
    self.assertNotIn('SCAN',plan,t)
+ def test_money_changes_are_logged(self):
+  self.payment('one',30000)
+  self.db.execute("DELETE FROM payments WHERE id='one'")
+  self.db.execute("UPDATE charges SET voided=1 WHERE id='c'")
+  self.db.execute("UPDATE leases SET status='ended' WHERE id='l'")
+  rows=self.db.execute("SELECT entity||':'||action FROM audit_log WHERE user_id='a' ORDER BY id").fetchall()
+  self.assertEqual([r[0] for r in rows],['lease:created','charge:created','payment:recorded','payment:reversed','charge:voided','lease:ended'])
+  self.assertEqual(self.db.execute("SELECT json_extract(detail,'$.property') FROM audit_log WHERE action='recorded'").fetchone()[0],'Home')
+ def test_deleting_an_account_removes_everything(self):
+  self.db.execute('PRAGMA foreign_keys=ON')
+  self.payment('one',30000)
+  self.db.execute("DELETE FROM users WHERE id='a'")
+  for t in ['properties','tenants','leases','charges','payments','audit_log']:
+   self.assertEqual(self.db.execute(f"SELECT COUNT(*) FROM {t} WHERE user_id='a'").fetchone()[0],0,t)
+  self.assertEqual(self.db.execute("SELECT COUNT(*) FROM properties WHERE user_id='b'").fetchone()[0],1)
  def test_ai_quota_is_atomic(self):
   q='INSERT INTO ai_usage(user_id,day,count) VALUES(?,?,1) ON CONFLICT(user_id,day) DO UPDATE SET count=count+1 WHERE count<? RETURNING count'
   for i in range(5):self.assertEqual(self.db.execute(q,('a','2026-10-04',5)).fetchone()[0],i+1)

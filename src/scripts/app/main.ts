@@ -28,6 +28,8 @@ import { documents } from "./views/documents";
 import { reports } from "./views/reports";
 import { assistant, usageLine } from "./views/assistant";
 import { settings } from "./views/settings";
+import { activity, activityView, loadActivity } from "./views/activity";
+import { api } from "./api";
 
 const views: Record<View, () => unknown> = {
   overview,
@@ -39,6 +41,7 @@ const views: Record<View, () => unknown> = {
   expenses,
   documents,
   reports,
+  activity: activityView,
   assistant,
   settings,
 };
@@ -50,25 +53,6 @@ const forms: Record<string, (id: string) => void> = {
   expenses: expenseForm,
   charges: chargeForm,
 };
-
-type ApiResult = Record<string, any>;
-async function api(path: string, method = "GET", body?: unknown) {
-  const res = await fetch("/api/" + path, {
-    method,
-    headers:
-      body && !(body instanceof FormData)
-        ? { "Content-Type": "application/json" }
-        : {},
-    body:
-      body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
-  });
-  const result = (await res.json().catch(() => null)) as ApiResult | null;
-  if (!res.ok || !result) {
-    if (res.status === 401) location.href = "/login";
-    throw new Error(result?.error || "The request could not be completed.");
-  }
-  return result;
-}
 
 // lit renders after any existing children, so the server-rendered spinner is cleared once.
 let painted = false;
@@ -97,6 +81,8 @@ function render() {
       app.view
     ]()}`,
   );
+  if (app.view === "activity" && activity.state === "idle")
+    void loadActivity(render);
 }
 
 async function load() {
@@ -104,6 +90,7 @@ async function load() {
     const data = (demo ? demoWorkspace() : await api("workspace")) as Workspace;
     data.charges = data.charges.filter((c) => !c.voided);
     app.data = data;
+    activity.state = "idle";
     document.querySelector("#workspace-name")!.textContent =
       data.user.company || "My workspace";
     document.querySelector("#plan-info")!.textContent =
@@ -169,6 +156,11 @@ async function action(name: string, id: string, button: HTMLButtonElement) {
   if (name === "property-detail") return propertyDetail(id);
   if (name === "tenant-statement") return tenantStatement(id);
   if (name === "print-statement") return print();
+  if (name === "older-activity") return loadActivity(render, true);
+  if (name === "reload-activity") {
+    activity.state = "idle";
+    return render();
+  }
   if (name.startsWith("new-")) return forms[name.slice(4)]?.("");
   if (name.startsWith("edit-")) return forms[name.slice(5)]?.(id);
   if (name === "upload-file") return fileForm(id);

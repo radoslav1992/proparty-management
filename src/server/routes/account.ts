@@ -10,6 +10,7 @@ import { emailConfigured, sendVerification } from "../../lib/email";
 import { json, later, readBody } from "../http";
 import { get, patch, post } from "../router";
 import { parse, passwordChangeInput, settingsInput } from "../schemas";
+import type { AuditEntry } from "../../lib/types";
 
 const WORKSPACE_TABLES = [
   "properties",
@@ -23,6 +24,20 @@ const WORKSPACE_TABLES = [
 ] as const;
 
 export const accountRoutes = [
+  // Newest first, 100 at a time; pass ?before=<id> for older entries.
+  get("activity", async (c) => {
+    const before = Number(c.url.searchParams.get("before")) || 2 ** 53;
+    const rows = await c.db
+      .prepare(
+        "SELECT id,at,entity,entity_id,action,detail FROM audit_log WHERE user_id=? AND id<? ORDER BY id DESC LIMIT 101",
+      )
+      .bind(c.userId, before)
+      .all<AuditEntry>();
+    return json({
+      entries: rows.results.slice(0, 100),
+      more: rows.results.length > 100,
+    });
+  }),
   get("workspace", async (c) => {
     const results = await c.db.batch(
       WORKSPACE_TABLES.map((t) =>

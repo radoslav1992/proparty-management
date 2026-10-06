@@ -20,7 +20,7 @@ export async function dailyMaintenance(db: D1Database, now = new Date()) {
     // A lease whose last day has passed stops generating charges.
     db
       .prepare(
-        "UPDATE leases SET status='ended' WHERE status='active' AND end_date<?",
+        "UPDATE leases SET status='ended',updated_at=CURRENT_TIMESTAMP WHERE status='active' AND end_date<?",
       )
       .bind(day),
     db.prepare("DELETE FROM sessions WHERE expires_at<=?").bind(seconds),

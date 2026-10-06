@@ -1296,3 +1296,7 @@ dialog:has(.statement) {
 .arrears {
   margin-bottom: 28px;
 }
+td.wrap {
+  white-space: normal;
+  min-width: 260px;
+}

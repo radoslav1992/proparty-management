@@ -38,7 +38,7 @@ function updateStatement(
     .prepare(
       `UPDATE ${table} SET ${Object.keys(values)
         .map((k) => k + "=?")
-        .join(",")} WHERE id=? AND user_id=?`,
+        .join(",")},updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?`,
     )
     .bind(...Object.values(values), id, c.userId);
 }

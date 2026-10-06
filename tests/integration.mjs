@@ -254,6 +254,19 @@ await call("/api/files", {
   body: bad,
   status: 400,
 });
+// A streamed upload with no declared size is refused before its body is read.
+const encoded = new Request("http://x", { method: "POST", body: form });
+const streamed = await fetch(base + "/api/files", {
+  method: "POST",
+  duplex: "half",
+  headers: {
+    Origin: base,
+    Cookie: a.cookie,
+    "Content-Type": encoded.headers.get("content-type"),
+  },
+  body: encoded.body,
+});
+assert.equal(streamed.status, 411);
 const csv = (await call("/api/reports?month=2026-10", { cookie: a.cookie }))
   .data;
 assert.ok(csv.includes("'=Formula test"));
@@ -656,6 +669,8 @@ const second = await call("/api/auth/login", {
   method: "POST",
   body: credentials,
 });
+// A new session lasts seven days from its last use.
+assert.match(second.headers.get("set-cookie"), /Max-Age=604800/);
 await call("/api/account/password", {
   method: "POST",
   cookie: a.cookie,

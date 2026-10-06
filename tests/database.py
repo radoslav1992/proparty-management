@@ -74,4 +74,10 @@ class DatabaseTests(unittest.TestCase):
   q='INSERT INTO ai_usage(user_id,day,count) VALUES(?,?,1) ON CONFLICT(user_id,day) DO UPDATE SET count=count+1 WHERE count<? RETURNING count'
   for i in range(5):self.assertEqual(self.db.execute(q,('a','2026-10-04',5)).fetchone()[0],i+1)
   self.assertIsNone(self.db.execute(q,('a','2026-10-04',5)).fetchone())
+ def test_existing_sessions_get_a_sign_in_time(self):
+  db=sqlite3.connect(':memory:')
+  for m in sorted(pathlib.Path('migrations').glob('*.sql')):
+   if m.name.startswith('0006'):db.execute("INSERT INTO users(id,email,name,password_hash) VALUES('u','u@example.com','U','test')");db.execute("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES('t','u',1800000000)")
+   db.executescript(m.read_text())
+  self.assertEqual(db.execute("SELECT created_at FROM sessions").fetchone()[0],1800000000-604800)
 if __name__=='__main__':unittest.main()

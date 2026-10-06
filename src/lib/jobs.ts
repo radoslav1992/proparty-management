@@ -1,3 +1,4 @@
+import { SESSION_MAX } from "./crypto";
 // Creates one rent charge per active lease covering the month. The due day is moved into the lease's own dates, and existing or voided charges are left alone.
 export const generateCharges = (
   db: D1Database,
@@ -23,7 +24,9 @@ export async function dailyMaintenance(db: D1Database, now = new Date()) {
         "UPDATE leases SET status='ended',updated_at=CURRENT_TIMESTAMP WHERE status='active' AND end_date<?",
       )
       .bind(day),
-    db.prepare("DELETE FROM sessions WHERE expires_at<=?").bind(seconds),
+    db
+      .prepare("DELETE FROM sessions WHERE expires_at<=? OR created_at<=?")
+      .bind(seconds, seconds - SESSION_MAX),
     db.prepare("DELETE FROM rate_limits WHERE expires_at<=?").bind(seconds),
     db.prepare("DELETE FROM reset_tokens WHERE expires_at<=?").bind(seconds),
     db.prepare("DELETE FROM verify_tokens WHERE expires_at<=?").bind(seconds),

@@ -1,14 +1,15 @@
 import { HttpError, uid } from "../../lib/domain";
 import {
+  checkPassword,
   digest,
   token,
   hashPassword,
-  verifyPassword,
   rateLimit,
   sessionToken,
   setSessionCookie,
   clearSessionCookies,
 } from "../../lib/auth";
+import { SESSION_IDLE } from "../../lib/crypto";
 import {
   emailConfigured,
   sendPasswordReset,
@@ -46,12 +47,13 @@ const limitEmail = async (email: string) =>
   rateLimit("auth:email:" + (await digest(email)), 10, 900);
 
 async function startSession(c: RequestContext, userId: string) {
-  const t = token();
+  const t = token(),
+    now = Math.floor(Date.now() / 1000);
   await c.db
     .prepare(
-      "INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)",
+      "INSERT INTO sessions(token_hash,user_id,expires_at,created_at) VALUES(?,?,?,?)",
     )
-    .bind(await digest(t), userId, Math.floor(Date.now() / 1000) + 604800)
+    .bind(await digest(t), userId, now + SESSION_IDLE, now)
     .run();
   setSessionCookie(c.ctx.cookies, c.url, t);
   return json({ ok: true });
@@ -171,13 +173,23 @@ export const authRoutes = [
       .prepare("SELECT id,password_hash FROM users WHERE email=?")
       .bind(input.email)
       .first<{ id: string; password_hash: string }>();
-    const valid = await verifyPassword(
+    const { valid, outdated } = await checkPassword(
       input.password,
       user?.password_hash ??
         (await (dummyHash ??= hashPassword("not a real password"))),
     );
     if (!user || !valid)
       throw new HttpError(401, "Email or password is incorrect.");
+    // A hash in an older format is replaced now that the password is known; a concurrent change wins.
+    if (outdated)
+      later(c.ctx, async () => {
+        await c.db
+          .prepare(
+            "UPDATE users SET password_hash=? WHERE id=? AND password_hash=?",
+          )
+          .bind(await hashPassword(input.password), user.id, user.password_hash)
+          .run();
+      });
     return startSession(c, user.id);
   }),
 ];

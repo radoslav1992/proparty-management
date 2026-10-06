@@ -34,7 +34,7 @@ Run these commands in a terminal from the repository root. Authenticate with `np
 
 Run `npm run db:remote` again whenever a release adds a numbered migration (for example `0002_indexes.sql`). Wrangler applies only the migrations not yet recorded in the database. Never edit a migration that has already been applied; add a new numbered file instead.
 
-**Apply new migrations before deploying the code that ships with them.** From `0003` on, the code reads columns those migrations add (`email_verified_at`, `voided`, `locale`, `has_thumb`, `updated_at`); deployed first, signed-in requests fail until the migrations run. Every migration is additive, so running them ahead of the code is safe. The safest setup is the combined deploy command in step 3.
+**Apply new migrations before deploying the code that ships with them.** From `0003` on, the code reads columns those migrations add (`email_verified_at`, `voided`, `locale`, `has_thumb`, `updated_at`, `sessions.created_at`); deployed first, signed-in requests fail until the migrations run. Every migration is additive, so running them ahead of the code is safe. The safest setup is the combined deploy command in step 3.
 
 ### Recovering from an incomplete console import
 
@@ -72,7 +72,7 @@ CLI deployment: `npm run deploy`.
 
 ## 4. Variables and secrets
 
-No session-signing key is needed: 32-byte random session tokens are stored only as SHA-256 hashes in D1, with HttpOnly cookies and a seven-day expiry. Astro's separate KV session feature is disabled; there is no KV resource to configure.
+No session-signing key is needed: 32-byte random session tokens are stored only as SHA-256 hashes in D1, with HttpOnly cookies. A session ends after seven days without use and 30 days after sign-in at the latest. Passwords are PBKDF2-SHA256 hashes stored with their parameters (`pbkdf2-sha256$iterations$salt$hash`); hashes in the older format are rewritten at the user's next sign-in. Astro's separate KV session feature is disabled; there is no KV resource to configure.
 
 Set variables in Worker Settings → Variables and Secrets. `keep_vars: true` preserves dashboard variables across builds.
 

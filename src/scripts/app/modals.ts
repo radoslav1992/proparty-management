@@ -19,12 +19,14 @@ import {
   tenant,
   today,
 } from "./state";
+import { addDays } from "../../lib/dates";
 import {
   area,
   arrow,
   badge,
   btn,
   cash,
+  checkbox,
   dateLabel,
   field,
   monthLabel,
@@ -65,12 +67,19 @@ function recordForm(o: {
   description: string;
   record: string;
   id?: string;
+  /** Defaults to PATCH with an id and POST without. */
+  method?: "POST" | "PATCH";
   submit: string;
   fields: unknown;
 }) {
   openModal(
     html`${intro(o.title, o.description)}
-      <form class="record-form" data-record=${o.record} data-id=${o.id ?? ""}>
+      <form
+        class="record-form"
+        data-record=${o.record}
+        data-id=${o.id ?? ""}
+        data-method=${o.method ?? ""}
+      >
         ${o.fields}
         <div class="form-message" role="alert"></div>
         <div class="form-actions">
@@ -184,6 +193,11 @@ export function leaseForm(id = "") {
             min: r.start_date,
           })}
         </div>
+        ${checkbox(
+          "Charge partial first and last months by the days covered",
+          "prorate",
+          !!r.prorate,
+        )}
         <small
           >New rent applies to charges generated from now on; edit existing
           charges in the Rent ledger. Unpaid charges after a shortened end date
@@ -229,9 +243,12 @@ export function leaseForm(id = "") {
         type: "number",
         min: 1,
         max: 28,
-      })}<small
-        >Charges use full monthly rent, including first and last months. You can
-        add the next tenant's lease before the current one ends, as long as the
+      })}${checkbox(
+        "Charge partial first and last months by the days covered",
+        "prorate",
+      )}<small
+        >Without this, first and last months are charged in full. You can add
+        the next tenant's lease before the current one ends, as long as the
         dates do not overlap.</small
       >`,
   });
@@ -252,9 +269,88 @@ export function endLeaseForm(id: string) {
         "end_date",
         last < l.start_date ? l.start_date : last,
         { type: "date", min: l.start_date, max: l.end_date },
+      )}${checkbox(
+        "Charge the final month by the days covered",
+        "prorate",
+        !!l.prorate,
       )}<small
         >Charges and payments so far are kept. Unpaid charges for months after
         this date are removed, and no new ones are generated.</small
+      >`,
+  });
+}
+
+/** The day before the same date a year later: a one-year term. */
+const yearFrom = (start: string) => {
+  const [y, m, d] = start.split("-").map(Number);
+  return new Date(Date.UTC(y + 1, m - 1, d - 1)).toISOString().slice(0, 10);
+};
+export function renewLeaseForm(id: string) {
+  const l = lease(id);
+  if (!l) return;
+  const start = addDays(l.end_date, 1);
+  recordForm({
+    title: "Renew this lease",
+    description: `${property(l.property_id)?.name} · ${tenant(l.tenant_id)?.name} · from ${dateLabel(start)}`,
+    record: "leases",
+    id: l.id + "/renew",
+    method: "POST",
+    submit: "Renew lease",
+    fields: html`<div class="form-grid">
+        ${field(`Monthly rent (${currency()})`, "rent", l.rent_cents / 100, {
+          type: "number",
+          min: 0.01,
+          step: "0.01",
+        })}${field("New end date", "end_date", yearFrom(start), {
+          type: "date",
+          min: start,
+        })}
+      </div>
+      <small
+        >The renewal keeps the property, tenant, due day and
+        proration${l.deposit_cents ? ", and the deposit moves to it" : ""}. A
+        new rent applies to the renewal only.</small
+      >`,
+  });
+}
+
+export function depositForm(id: string) {
+  const l = lease(id);
+  if (!l) return;
+  recordForm({
+    title: "Deposit",
+    description: `${property(l.property_id)?.name} · ${tenant(l.tenant_id)?.name} · ${cash(l.deposit_cents)} agreed`,
+    record: "leases",
+    id: l.id + "/deposit",
+    submit: "Save deposit",
+    fields: html`${field(
+        "Received on",
+        "received_on",
+        l.deposit_received_on ?? "",
+        { type: "date", required: false },
+      )}
+      <div class="form-grid">
+        ${field(
+          `Returned (${currency()})`,
+          "returned",
+          l.deposit_returned_cents == null
+            ? ""
+            : l.deposit_returned_cents / 100,
+          {
+            type: "number",
+            min: 0,
+            max: l.deposit_cents / 100,
+            step: "0.01",
+            required: false,
+          },
+        )}${field("Returned on", "returned_on", l.deposit_returned_on ?? "", {
+          type: "date",
+          required: false,
+        })}
+      </div>
+      <small
+        >Leave the return empty while you hold the deposit. Enter 0 if all of it
+        was kept, for example for repairs.</small
       >`,
   });
 }

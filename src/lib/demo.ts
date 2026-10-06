@@ -66,6 +66,9 @@ export function demoWorkspace() {
       deposit_cents: 85000,
       due_day: 1,
       status: "active",
+      prorate: 0,
+      renewed_from: null,
+      deposit_received_on: now.getFullYear() + "-01-01",
     },
     {
       id: "l2",
@@ -77,6 +80,9 @@ export function demoWorkspace() {
       deposit_cents: 125000,
       due_day: 1,
       status: "active",
+      prorate: 0,
+      renewed_from: null,
+      deposit_received_on: now.getFullYear() + "-01-01",
     },
   ];
   const charges: any[] = [],

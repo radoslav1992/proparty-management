@@ -174,6 +174,13 @@ try {
   await seen("td:has-text('€800.00')");
   await act("end-lease");
   await save();
+  await seen(".badge:text('ended')");
+  // Renewing continues the ended lease from the next day; the old one keeps its history.
+  await act("renew-lease");
+  await page.fill("#editor [name=rent]", "820");
+  await save();
+  await seen("td small:text('Renewal')");
+  await seen("td:has-text('€820.00')");
   await seen("text=History retained");
 
   // The property's own history lists its lease and rent, loaded from the server.

@@ -7,6 +7,7 @@ import {
   chargeForm,
   confirmAction,
   deleteAccountForm,
+  depositForm,
   editorChanged,
   endLeaseForm,
   expenseForm,
@@ -16,6 +17,7 @@ import {
   paymentForm,
   propertyDetail,
   propertyForm,
+  renewLeaseForm,
   tenantForm,
   tenantStatement,
 } from "./modals";
@@ -233,6 +235,8 @@ async function action(name: string, id: string, button: HTMLButtonElement) {
     return confirmAction(title, text, "confirmed-delete-" + type, id);
   }
   if (name === "end-lease") return endLeaseForm(id);
+  if (name === "renew-lease") return renewLeaseForm(id);
+  if (name === "lease-deposit") return depositForm(id);
   button.disabled = true;
   try {
     if (name.startsWith("confirmed-delete-")) {
@@ -380,7 +384,7 @@ async function submit(form: HTMLFormElement) {
     id = form.dataset.id;
   await api(
     type + (id ? "/" + id : ""),
-    id ? "PATCH" : "POST",
+    form.dataset.method || (id ? "PATCH" : "POST"),
     type === "files" ? await withThumbnail(new FormData(form)) : values,
   );
   el.dialog.close();

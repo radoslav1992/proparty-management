@@ -537,6 +537,129 @@ await call(`/api/properties/${nextLease.property_id}/history`, {
   cookie: b.cookie,
   status: 404,
 });
+// Proration charges partial months by days covered and follows the lease's dates.
+const prorated = (
+  await call("/api/leases", {
+    method: "POST",
+    cookie: a.cookie,
+    status: 201,
+    body: {
+      property_id: p.id,
+      tenant_id: t.id,
+      start_date: "2025-04-16",
+      end_date: "2025-06-10",
+      rent: "900",
+      deposit: "1000",
+      due_day: 1,
+      prorate: "1",
+    },
+  })
+).data;
+for (const month of ["2025-04", "2025-05", "2025-06"])
+  await call("/api/charges/generate", {
+    method: "POST",
+    cookie: a.cookie,
+    body: { month },
+  });
+const leaseCharges = async (leaseId) =>
+  (
+    await call("/api/workspace?only=charges&since=2025-01", {
+      cookie: a.cookie,
+    })
+  ).data.charges
+    .filter((c) => c.lease_id === leaseId && !c.voided)
+    .map((c) => [c.month, c.amount_cents])
+    .sort((x, y) => x[0].localeCompare(y[0]));
+assert.deepEqual(await leaseCharges(prorated.id), [
+  ["2025-04", 45000],
+  ["2025-05", 90000],
+  ["2025-06", 30000],
+]);
+const editLease = (body, status = 200) =>
+  call(`/api/leases/${prorated.id}`, {
+    method: "PATCH",
+    cookie: a.cookie,
+    status,
+    body,
+  });
+await editLease({ status: "ended", end_date: "2025-05-15", prorate: "1" });
+assert.deepEqual(await leaseCharges(prorated.id), [
+  ["2025-04", 45000],
+  ["2025-05", 43548],
+]);
+await editLease({ prorate: "0" });
+assert.deepEqual(await leaseCharges(prorated.id), [
+  ["2025-04", 90000],
+  ["2025-05", 90000],
+]);
+await editLease({ prorate: "1" });
+assert.deepEqual(await leaseCharges(prorated.id), [
+  ["2025-04", 45000],
+  ["2025-05", 43548],
+]);
+// The deposit's receipt and return are recorded and checked.
+const deposit = (leaseId, body, status = 200) =>
+  call(`/api/leases/${leaseId}/deposit`, {
+    method: "PATCH",
+    cookie: a.cookie,
+    status,
+    body,
+  });
+await deposit(
+  prorated.id,
+  { received_on: "", returned: "100", returned_on: "2025-05-20" },
+  400,
+);
+await deposit(
+  prorated.id,
+  { received_on: "2025-04-16", returned: "1000.01", returned_on: "2025-05-20" },
+  400,
+);
+await deposit(
+  prorated.id,
+  { received_on: "2025-04-16", returned: "100", returned_on: "" },
+  400,
+);
+await deposit(prorated.id, {
+  received_on: "2025-04-16",
+  returned: "",
+  returned_on: "",
+});
+// A renewal starts the next day, keeps proration and takes the deposit with it.
+const renew = (body, status = 201) =>
+  call(`/api/leases/${prorated.id}/renew`, {
+    method: "POST",
+    cookie: a.cookie,
+    status,
+    body,
+  });
+await renew({ end_date: "2025-05-15", rent: "950" }, 400);
+const renewal = (await renew({ end_date: "2025-08-31", rent: "950" })).data;
+await renew({ end_date: "2025-09-30", rent: "950" }, 409);
+await call("/api/charges/generate", {
+  method: "POST",
+  cookie: a.cookie,
+  body: { month: "2025-05" },
+});
+assert.deepEqual(await leaseCharges(renewal.id), [["2025-05", 49032]]);
+const renewed = (
+  await call("/api/workspace", { cookie: a.cookie })
+).data.leases.find((l) => l.id === renewal.id);
+assert.equal(renewed.start_date, "2025-05-16");
+assert.equal(renewed.renewed_from, prorated.id);
+assert.equal(renewed.deposit_cents, 100000);
+assert.equal(renewed.deposit_received_on, "2025-04-16");
+assert.equal(renewed.prorate, 1);
+await deposit(
+  prorated.id,
+  { received_on: "2025-04-16", returned: "800", returned_on: "2025-09-05" },
+  400,
+);
+await deposit(renewal.id, {
+  received_on: "2025-04-16",
+  returned: "800",
+  returned_on: "2025-09-05",
+});
 // Money and lease changes are kept in an account's own history.
 const history = (await call("/api/activity", { cookie: a.cookie })).data;
 const kinds = history.entries.map((e) => e.entity + ":" + e.action);
@@ -547,8 +670,14 @@ for (const kind of [
   "charge:voided",
   "lease:changed",
   "lease:ended",
+  "lease:deposit",
 ])
   assert.ok(kinds.includes(kind), kind);
+assert.ok(
+  history.entries.some(
+    (e) => e.entity_id === renewal.id && JSON.parse(e.detail).renewal === 1,
+  ),
+);
 assert.equal(
   (await call("/api/activity", { cookie: b.cookie })).data.entries.length,
   0,

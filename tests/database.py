@@ -80,4 +80,12 @@ class DatabaseTests(unittest.TestCase):
    if m.name.startswith('0006'):db.execute("INSERT INTO users(id,email,name,password_hash) VALUES('u','u@example.com','U','test')");db.execute("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES('t','u',1800000000)")
    db.executescript(m.read_text())
   self.assertEqual(db.execute("SELECT created_at FROM sessions").fetchone()[0],1800000000-604800)
+ def test_renewals_and_deposits_are_logged_and_renewed_once(self):
+  self.db.execute("UPDATE leases SET deposit_cents=100000 WHERE id='l'")
+  self.db.execute("UPDATE leases SET deposit_received_on='2026-01-01' WHERE id='l'")
+  self.db.execute("INSERT INTO leases(id,user_id,property_id,tenant_id,start_date,end_date,rent_cents,renewed_from) VALUES('r','a','pa','ta','2027-01-01','2027-12-31',90000,'l')")
+  with self.assertRaises(sqlite3.IntegrityError):
+   self.db.execute("INSERT INTO leases(id,user_id,property_id,tenant_id,start_date,end_date,rent_cents,renewed_from) VALUES('r2','a','pa','ta','2028-01-01','2028-12-31',90000,'l')")
+  rows=self.db.execute("SELECT action,json_extract(detail,'$.renewal'),json_extract(detail,'$.received_on') FROM audit_log WHERE entity='lease' ORDER BY id").fetchall()
+  self.assertEqual(rows,[('created',0,None),('changed',None,None),('deposit',None,'2026-01-01'),('created',1,None)])
 if __name__=='__main__':unittest.main()

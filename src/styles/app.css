@@ -563,7 +563,7 @@
   font-size: 12px;
 }
 .toolbar select {
-  max-width: 190px;
+  width: 210px;
   font-size: 12px;
 }
 .table-wrap {
@@ -944,6 +944,20 @@ dialog::backdrop {
 .record-form textarea {
   font-size: 13px;
 }
+.record-form .check-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.check-field input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  flex: none;
+  accent-color: var(--green);
+}
 .form-actions {
   display: flex;
   justify-content: flex-end;
@@ -1023,7 +1037,9 @@ dialog::backdrop {
 }
 .action-inline {
   display: inline-flex;
+  flex-wrap: wrap;
   gap: 6px;
+  width: 180px;
 }
 .alert {
   padding: 14px 18px;
@@ -1311,6 +1327,10 @@ dialog:has(.property-history) {
 td.wrap {
   white-space: normal;
   min-width: 260px;
+}
+td.note {
+  white-space: normal;
+  min-width: 160px;
 }
 .data-actions {
   display: flex;

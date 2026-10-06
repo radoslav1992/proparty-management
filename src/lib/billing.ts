@@ -1,8 +1,12 @@
 import { bindings } from "./env";
 import { HttpError, subscriptionPlan } from "./domain";
 import { validStripeSignature } from "./crypto";
-// POST when params are given, otherwise GET.
-export async function stripe(path: string, params?: Record<string, string>) {
+// POST when params are given, otherwise GET; pass "DELETE" to cancel a resource.
+export async function stripe(
+  path: string,
+  params?: Record<string, string>,
+  method = params ? "POST" : "GET",
+) {
   const key = bindings().STRIPE_SECRET_KEY;
   if (!key)
     throw new HttpError(
@@ -10,7 +14,7 @@ export async function stripe(path: string, params?: Record<string, string>) {
       "Subscriptions are not enabled yet. Your free workspace remains available.",
     );
   const res = await fetch("https://api.stripe.com/v1/" + path, {
-    method: params ? "POST" : "GET",
+    method,
     headers: {
       Authorization: `Bearer ${key}`,
       ...(params

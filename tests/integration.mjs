@@ -453,6 +453,84 @@ assert.equal(
     ?.due_date,
   [thisMonth + "-28", day(0)].sort().at(-1),
 );
+// Self-service export and deletion remove only the requesting account.
+const leaver = await call("/api/auth/register", {
+  method: "POST",
+  body: {
+    name: "Leaving",
+    email: `leaving-${suffix}@example.com`,
+    password: "A valid test password 123",
+  },
+});
+const leaverHome = (
+  await call("/api/properties", {
+    method: "POST",
+    cookie: leaver.cookie,
+    status: 201,
+    body: {
+      name: "Leaving flat",
+      address: "3 Test Street",
+      city: "Sofia",
+      type: "Studio",
+      bedrooms: 1,
+      area: 20,
+      rent: "400",
+    },
+  })
+).data;
+const leaverFile = new FormData();
+leaverFile.set("property_id", leaverHome.id);
+leaverFile.set(
+  "file",
+  new Blob([await readFile("public/images/ns-img-232.webp")], {
+    type: "image/webp",
+  }),
+  "photo.webp",
+);
+const stored = (
+  await call("/api/files", {
+    method: "POST",
+    cookie: leaver.cookie,
+    body: leaverFile,
+    status: 201,
+  })
+).data;
+const exported = await call("/api/account/export", { cookie: leaver.cookie });
+assert.equal(exported.data.account.email, `leaving-${suffix}@example.com`);
+assert.equal(exported.data.properties[0].name, "Leaving flat");
+assert.equal(exported.data.files[0].download, "/api/files/" + stored.id);
+assert.ok(!JSON.stringify(exported.data).includes('"user_id"'));
+assert.ok(!JSON.stringify(exported.data).includes('"key"'));
+await call("/api/account/delete", {
+  method: "POST",
+  cookie: leaver.cookie,
+  status: 400,
+  body: { password: "wrong password!!", confirm: "DELETE" },
+});
+await call("/api/account/delete", {
+  method: "POST",
+  cookie: leaver.cookie,
+  status: 400,
+  body: { password: "A valid test password 123", confirm: "delete" },
+});
+await call("/api/account/delete", {
+  method: "POST",
+  cookie: leaver.cookie,
+  body: { password: "A valid test password 123", confirm: "DELETE" },
+});
+await call("/api/workspace", { cookie: leaver.cookie, status: 401 });
+await call("/api/auth/login", {
+  method: "POST",
+  status: 401,
+  body: {
+    email: `leaving-${suffix}@example.com`,
+    password: "A valid test password 123",
+  },
+});
+assert.equal(
+  (await call("/api/workspace", { cookie: b.cookie })).data.user.name,
+  "Test manager B",
+);
 // Account security: password change, other sessions, verification links.
 const credentials = {
   email: `test-a-${suffix}@example.com`,

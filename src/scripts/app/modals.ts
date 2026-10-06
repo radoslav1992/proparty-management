@@ -521,6 +521,38 @@ export function tenantStatement(id: string) {
   );
 }
 
+export function deleteAccountForm() {
+  openModal(
+    html`${intro(
+        "Delete your account?",
+        "This permanently deletes your properties, tenants, leases, rent history, documents and photos, and cancels any paid plan. It cannot be undone.",
+      )}
+      <form class="record-form" id="delete-account-form">
+        <p class="note-box">
+          Need a copy? Close this and use “Download my data” first.
+        </p>
+        ${field("Your password", "password", "", {
+          type: "password",
+          autocomplete: "current-password",
+          maxlength: 128,
+        })}${field("Type DELETE to confirm", "confirm", "", {
+          placeholder: "DELETE",
+          autocomplete: "off",
+          maxlength: 6,
+        })}
+        <div class="form-message" role="alert"></div>
+        <div class="form-actions">
+          ${btn("Cancel", "close", "", "button outline")}<button
+            class="button danger-button"
+            type="submit"
+          >
+            Delete everything
+          </button>
+        </div>
+      </form>`,
+  );
+}
+
 export function confirmAction(
   title: string,
   description: string,

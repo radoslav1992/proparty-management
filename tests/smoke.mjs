@@ -163,6 +163,15 @@ try {
   await page.click("#password-form button[type=submit]");
   await seen("#password-form .form-message:text('incorrect')");
 
+  // Finally the new account deletes itself.
+  await act("delete-account");
+  await page.fill("#editor [name=password]", "A valid test password 123");
+  await page.fill("#editor [name=confirm]", "DELETE");
+  await page.click("#editor button[type=submit]");
+  await page.waitForURL(base + "/");
+  await page.goto(base + "/app");
+  await page.waitForURL("**/login");
+
   assert.deepEqual(problems, []);
   console.log(
     "PASS: browser smoke test of public pages, the demo and a full workspace journey.",

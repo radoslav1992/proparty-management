@@ -1300,3 +1300,9 @@ td.wrap {
   white-space: normal;
   min-width: 260px;
 }
+.data-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}

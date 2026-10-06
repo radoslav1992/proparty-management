@@ -6,6 +6,7 @@ import { btn, empty, toast } from "./ui";
 import {
   chargeForm,
   confirmAction,
+  deleteAccountForm,
   endLeaseForm,
   expenseForm,
   fileForm,
@@ -175,7 +176,10 @@ async function action(name: string, id: string, button: HTMLButtonElement) {
     location.href = "/api/reports?month=" + app.month;
     return;
   }
+  if (name === "export-data")
+    return toast("Create a workspace to download your own data.");
   if (!ensureWritable()) return;
+  if (name === "delete-account") return deleteAccountForm();
   if (name.startsWith("delete-")) {
     const type = name.slice(7);
     const [title, text] = DELETE_TEXT[type] ?? [
@@ -259,6 +263,11 @@ async function submit(form: HTMLFormElement) {
     await api("account/password", "POST", values);
     form.reset();
     return toast("Password changed. Other devices have been signed out.");
+  }
+  if (form.id === "delete-account-form") {
+    await api("account/delete", "POST", values);
+    location.href = "/";
+    return;
   }
   if (form.id === "settings-form") {
     await api("settings", "PATCH", values);
@@ -355,7 +364,11 @@ el.editor.addEventListener("change", (event) => {
 });
 document.addEventListener("submit", async (event) => {
   const form = event.target as HTMLFormElement;
-  if (!form.matches(".record-form,#settings-form,#password-form,#ai-form"))
+  if (
+    !form.matches(
+      ".record-form,#settings-form,#password-form,#delete-account-form,#ai-form",
+    )
+  )
     return;
   event.preventDefault();
   if (!ensureWritable()) return;

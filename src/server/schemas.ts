@@ -82,6 +82,13 @@ export const passwordChangeInput = z.object({
     return p;
   }),
 });
+export const accountDeleteInput = z.object({
+  password: required("Password", 128),
+  confirm: check((v) => {
+    if (v !== "DELETE") throw new HttpError(400, "Type DELETE to confirm.");
+    return v;
+  }),
+});
 export const settingsInput = z.object({
   name: required("Name", 100),
   company: optional("Company", 150),

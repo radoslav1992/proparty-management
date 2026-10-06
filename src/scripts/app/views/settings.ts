@@ -1,6 +1,6 @@
 import { html, nothing } from "lit-html";
 import { CURRENCIES } from "../../../lib/types";
-import { app } from "../state";
+import { app, demo } from "../state";
 import { arrow, btn, field, heading, select } from "../ui";
 
 const CURRENCY_NAMES = {
@@ -110,6 +110,35 @@ export function settings() {
             "button small outline",
           )}
         </form>
+      </section>
+      <section class="panel panel-padding">
+        <h2 style="font-size:20px">Your data</h2>
+        <p style="font-size:12px">
+          Download everything in your workspace as a JSON file, or delete your
+          account with all of its records, documents and photos.
+        </p>
+        <div class="data-actions">
+          ${
+            demo
+              ? btn(
+                  "Download my data",
+                  "export-data",
+                  "",
+                  "button small outline",
+                )
+              : html`<a
+                  class="button small outline"
+                  href="/api/account/export"
+                  download
+                  >Download my data</a
+                >`
+          }${btn(
+            "Delete account",
+            "delete-account",
+            "",
+            "button small outline danger",
+          )}
+        </div>
       </section>
     </div>`;
 }

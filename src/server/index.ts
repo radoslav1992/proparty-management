@@ -10,11 +10,13 @@ import { rentRoutes } from "./routes/rent";
 import { recordRoutes } from "./routes/records";
 import { fileRoutes } from "./routes/files";
 import { aiRoutes } from "./routes/ai";
+import { dataRoutes } from "./routes/data";
 
 const routes: Route[] = [
   ...authRoutes,
   ...billingRoutes,
   ...accountRoutes,
+  ...dataRoutes,
   ...rentRoutes,
   ...aiRoutes,
   ...fileRoutes,

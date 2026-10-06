@@ -65,6 +65,24 @@ const duplicate = await call("/api/auth/register", {
 assert.match(duplicate.data.error, /account with this email already exists/);
 await call("/api/workspace", { status: 401 });
 await call("/app", { status: 302 });
+// Signing in returns to the workspace view that was asked for, and only to the workspace.
+const location = async (path, cookie) =>
+  (await call(path, { cookie, status: 302 })).headers.get("location");
+assert.equal(
+  await location("/app?view=rent"),
+  "/login?next=%2Fapp%3Fview%3Drent",
+);
+assert.equal(await location("/login", a.cookie), "/app");
+assert.equal(await location("/signup", a.cookie), "/app");
+assert.equal(
+  await location("/login?next=%2Fapp%3Fview%3Drent", a.cookie),
+  "/app?view=rent",
+);
+for (const next of ["https://evil.example", "//evil.example", "/api/workspace"])
+  assert.equal(
+    await location("/login?next=" + encodeURIComponent(next), a.cookie),
+    "/app",
+  );
 const p = (
   await call("/api/properties", {
     method: "POST",
@@ -744,6 +762,19 @@ for (const path of [
   "/verify-email",
 ])
   await call(path);
+// Unknown pages answer 404 at their own address.
+assert.match(
+  (await call("/no-such-page", { status: 404 })).data,
+  /This room is empty/,
+);
+const landing = (await call("/")).data;
+assert.ok(landing.includes(`<link rel="canonical" href="${base}/">`));
+assert.ok(
+  landing.includes(
+    `<meta property="og:image" content="${base}/images/ns-img-223.webp">`,
+  ),
+);
+assert.ok(!(await call("/login")).data.includes("og:title"));
 console.log(
   "PASS: registration, protected routes, two-account isolation, leases and overlap rules, charge generation, editing and voiding, partial payment, overpayment guard, reversal, maintenance, expenses, CSRF, R2 upload/ownership/delete, file signature checks, CSV injection safety, currency guard, lease editing and ending, daily job, password change, session sign-out, logout and public pages.",
 );

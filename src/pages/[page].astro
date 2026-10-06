@@ -33,7 +33,7 @@ const config: Record<
 };
 const legal = page === "privacy" || page === "terms";
 const c = config[page || ""];
-if (!c && !legal) return Astro.redirect("/404");
+if (!c && !legal) return Astro.rewrite("/404");
 ---
 
 <Base
@@ -235,6 +235,7 @@ if (!c && !legal) return Astro.redirect("/404");
     </main>
   )}
   <script>
+    import { afterSignIn } from "../lib/navigation";
     // The token is already in the form; keep it out of history and later Referer headers.
     if (new URLSearchParams(location.search).has("token"))
       history.replaceState(null, "", location.pathname);
@@ -262,7 +263,10 @@ if (!c && !legal) return Astro.redirect("/404");
           if (form.dataset.auth === "forgot")
             message.textContent = data.message;
           else
-            location.href = form.dataset.auth === "reset" ? "/login" : "/app";
+            location.href =
+              form.dataset.auth === "reset"
+                ? "/login"
+                : afterSignIn(new URLSearchParams(location.search).get("next"));
         } catch (err) {
           message.textContent = (err as Error).message;
         } finally {

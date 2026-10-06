@@ -2,6 +2,7 @@ import { defineMiddleware } from "astro:middleware";
 import { resumeSession } from "./lib/auth";
 import { randomHex } from "./lib/crypto";
 import { logError } from "./lib/log";
+import { afterSignIn, signInFor } from "./lib/navigation";
 export const onRequest = defineMiddleware(async (context, next) => {
   const { request, url, cookies } = context;
   context.locals.user = null;
@@ -16,7 +17,12 @@ export const onRequest = defineMiddleware(async (context, next) => {
         { status: 403, headers: { "Content-Type": "application/json" } },
       );
   }
-  if (url.pathname.startsWith("/app") || url.pathname.startsWith("/api/")) {
+  const signInPage = url.pathname === "/login" || url.pathname === "/signup";
+  if (
+    url.pathname.startsWith("/app") ||
+    url.pathname.startsWith("/api/") ||
+    signInPage
+  ) {
     try {
       context.locals.user = await resumeSession(cookies, url);
     } catch (err) {
@@ -30,7 +36,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
       );
     }
     if (url.pathname.startsWith("/app") && !context.locals.user)
-      return context.redirect("/login");
+      return context.redirect(signInFor(url.pathname + url.search));
+    if (signInPage && context.locals.user)
+      return context.redirect(afterSignIn(url.searchParams.get("next")));
   }
   const response = await next();
   if (url.pathname.startsWith("/api/"))

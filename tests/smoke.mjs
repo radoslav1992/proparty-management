@@ -64,7 +64,8 @@ try {
   // A new account, from first property to an ended lease.
   await page.goto(base + "/signup");
   await page.fill("[name=name]", "Smoke Test");
-  await page.fill("[name=email]", `smoke-${Date.now()}@example.com`);
+  const email = `smoke-${Date.now()}@example.com`;
+  await page.fill("[name=email]", email);
   await page.fill("[name=password]", "A valid test password 123");
   await page.click("button[type=submit]");
   await page.waitForURL("**/app");
@@ -203,7 +204,21 @@ try {
   await page.click("#password-form button[type=submit]");
   await seen("#password-form .form-message:text('incorrect')");
 
+  // Signed out, a workspace link leads through sign-in and back to that view.
+  await page.context().clearCookies();
+  await page.goto(base + "/app?view=reports");
+  await page.waitForURL("**/login?next=%2Fapp%3Fview%3Dreports");
+  await page.fill("[name=email]", email);
+  await page.fill("[name=password]", "A valid test password 123");
+  await page.click("button[type=submit]");
+  await page.waitForURL("**/app?view=reports");
+  await seen("td strong:text('Smoke Flat')");
+  // Signed in, the sign-in page goes straight to the workspace.
+  await page.goto(base + "/login");
+  await page.waitForURL("**/app");
+
   // Finally the new account deletes itself.
+  await go("settings");
   await act("delete-account");
   await page.fill("#editor [name=password]", "A valid test password 123");
   await page.fill("#editor [name=confirm]", "DELETE");

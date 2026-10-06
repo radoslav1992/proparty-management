@@ -31,7 +31,7 @@ import { reports } from "./views/reports";
 import { assistant, chat, type ChatMessage } from "./views/assistant";
 import { settings } from "./views/settings";
 import { activity, activityView, loadActivity } from "./views/activity";
-import { api } from "./api";
+import { api, signIn } from "./api";
 import { withThumbnail } from "./thumbnail";
 
 const views: Record<View, () => unknown> = {
@@ -321,7 +321,7 @@ async function askAssistant(form: HTMLFormElement) {
       body: JSON.stringify({ prompt, history }),
     });
     if (!res.ok) {
-      if (res.status === 401) location.href = "/login";
+      if (res.status === 401) signIn();
       const error = (await res.json().catch(() => null)) as {
         error?: string;
       } | null;

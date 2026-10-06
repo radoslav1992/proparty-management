@@ -266,10 +266,82 @@ await call("/api/settings", {
   status: 400,
   body: { name: "Test", company: "Test", currency: "USD" },
 });
+// The next tenant's lease can be entered ahead of time, but not over the current one.
+const nextLease = {
+  property_id: p.id,
+  tenant_id: t.id,
+  start_date: "2026-12-01",
+  end_date: "2027-06-30",
+  rent: "900",
+  deposit: "0",
+  due_day: 1,
+};
+await call("/api/leases", {
+  method: "POST",
+  cookie: a.cookie,
+  status: 409,
+  body: nextLease,
+});
+await call("/api/leases", {
+  method: "POST",
+  cookie: a.cookie,
+  status: 201,
+  body: { ...nextLease, start_date: "2027-01-01" },
+});
+// Rent charges can be corrected or removed; removed charges stay removed.
+await call("/api/charges/generate", {
+  method: "POST",
+  cookie: a.cookie,
+  body: { month: "2026-12" },
+});
+state = (await call("/api/workspace", { cookie: a.cookie })).data;
+const december = state.charges.find((c) => c.month === "2026-12");
+await call("/api/charges/" + december.id, {
+  method: "PATCH",
+  cookie: b.cookie,
+  status: 404,
+  body: { amount: "1", due_date: "2026-12-05" },
+});
+await call("/api/charges/" + december.id, {
+  method: "PATCH",
+  cookie: a.cookie,
+  body: { amount: "700", due_date: "2026-12-05" },
+});
+state = (await call("/api/workspace", { cookie: a.cookie })).data;
+assert.equal(
+  state.charges.find((c) => c.id === december.id).amount_cents,
+  70000,
+);
+await call("/api/charges/" + charge.id, {
+  method: "DELETE",
+  cookie: a.cookie,
+  status: 409,
+});
+await call("/api/charges/" + december.id, {
+  method: "DELETE",
+  cookie: a.cookie,
+});
+await call("/api/charges/generate", {
+  method: "POST",
+  cookie: a.cookie,
+  body: { month: "2026-12" },
+});
+await call("/api/payments", {
+  method: "POST",
+  cookie: a.cookie,
+  status: 409,
+  body: { charge_id: december.id, amount: "1", paid_date: "2026-12-05" },
+});
+state = (await call("/api/workspace", { cookie: a.cookie })).data;
+assert.deepEqual(
+  state.charges.filter((c) => c.month === "2026-12").map((c) => c.voided),
+  [1],
+);
+// Lease terms can be edited; ending early removes later unpaid charges.
 await call("/api/leases/" + l.id, {
   method: "PATCH",
   cookie: a.cookie,
-  body: { status: "ended" },
+  body: { rent: "875", deposit: "850", due_day: 5, end_date: "2026-12-31" },
 });
 await call("/api/charges/generate", {
   method: "POST",
@@ -277,11 +349,381 @@ await call("/api/charges/generate", {
   body: { month: "2026-11" },
 });
 state = (await call("/api/workspace", { cookie: a.cookie })).data;
-assert.equal(state.charges.length, 1);
+const november = state.charges.find((c) => c.month === "2026-11");
+assert.equal(november.amount_cents, 87500);
+assert.equal(november.due_date, "2026-11-05");
+await call("/api/leases/" + l.id, {
+  method: "PATCH",
+  cookie: a.cookie,
+  status: 400,
+  body: { end_date: "2025-12-31" },
+});
+await call("/api/leases/" + l.id, {
+  method: "PATCH",
+  cookie: a.cookie,
+  body: { status: "ended", end_date: "2026-10-31" },
+});
+state = (await call("/api/workspace", { cookie: a.cookie })).data;
+assert.deepEqual(
+  state.charges
+    .filter((c) => c.lease_id === l.id && !c.voided)
+    .map((c) => c.month),
+  ["2026-10"],
+);
+// Photos can carry a browser-made thumbnail; anything else sent as one is ignored.
+const photo = await readFile("public/images/ns-img-232.webp");
+const upload = async (thumb) => {
+  const form = new FormData();
+  form.set("property_id", p.id);
+  form.set("file", new Blob([photo], { type: "image/webp" }), "front.webp");
+  form.set("thumb", new Blob([thumb], { type: "image/webp" }), "thumb.webp");
+  return (
+    await call("/api/files", {
+      method: "POST",
+      cookie: a.cookie,
+      body: form,
+      status: 201,
+    })
+  ).data.id;
+};
+const withThumb = await upload(photo);
+const withoutThumb = await upload("<svg onload=alert(1)>");
+state = (await call("/api/workspace", { cookie: a.cookie })).data;
+const fileRow = (id) => state.files.find((f) => f.id === id);
+assert.equal(fileRow(withThumb).has_thumb, 1);
+assert.equal(fileRow(withoutThumb).has_thumb, 0);
+for (const id of [withThumb, withoutThumb]) {
+  const preview = await fetch(`${base}/api/files/${id}?size=thumb`, {
+    headers: { Cookie: a.cookie },
+  });
+  assert.equal(preview.status, 200);
+  assert.equal(preview.headers.get("content-type"), "image/webp");
+  await call("/api/files/" + id, { method: "DELETE", cookie: a.cookie });
+}
+// Dates and amounts follow the chosen format; only listed formats are accepted.
+await call("/api/settings", {
+  method: "PATCH",
+  cookie: a.cookie,
+  body: {
+    name: "Test manager A",
+    company: "",
+    currency: "EUR",
+    locale: "bg-BG",
+  },
+});
+assert.equal(
+  (await call("/api/workspace", { cookie: a.cookie })).data.user.locale,
+  "bg-BG",
+);
+await call("/api/settings", {
+  method: "PATCH",
+  cookie: a.cookie,
+  status: 400,
+  body: { name: "Test manager A", currency: "EUR", locale: "xx-XX" },
+});
+// Without Workers AI (local runs) the assistant fails cleanly and gives the request back.
+await call("/api/ai", {
+  method: "POST",
+  cookie: a.cookie,
+  status: 400,
+  body: {
+    prompt: "Hi",
+    history: Array(7).fill({ role: "user", content: "Earlier" }),
+  },
+});
+await call("/api/ai", {
+  method: "POST",
+  cookie: a.cookie,
+  status: 502,
+  body: { prompt: "Summarise my rent." },
+});
+assert.equal(
+  (await call("/api/workspace", { cookie: a.cookie })).data.aiUsage,
+  0,
+);
+// Paid-up history older than the window loads on request; unpaid charges always load.
+const oldLease = (
+  await call("/api/leases", {
+    method: "POST",
+    cookie: a.cookie,
+    status: 201,
+    body: { ...nextLease, start_date: "2023-01-01", end_date: "2023-12-31" },
+  })
+).data;
+await call("/api/charges/generate", {
+  method: "POST",
+  cookie: a.cookie,
+  body: { month: "2023-01" },
+});
+const oldCharge = () =>
+  call("/api/workspace", { cookie: a.cookie }).then((r) =>
+    r.data.charges.find((c) => c.lease_id === oldLease.id),
+  );
+const unpaid = await oldCharge();
+assert.ok(unpaid, "unpaid charges load whatever their age");
+await call("/api/payments", {
+  method: "POST",
+  cookie: a.cookie,
+  status: 201,
+  body: { charge_id: unpaid.id, amount: "900", paid_date: "2023-01-05" },
+});
+assert.equal(await oldCharge(), undefined);
+const older = (
+  await call("/api/workspace?only=charges,payments&since=2023-01", {
+    cookie: a.cookie,
+  })
+).data;
+assert.deepEqual(Object.keys(older).sort(), [
+  "charges",
+  "payments",
+  "windowStart",
+]);
+assert.ok(older.charges.some((c) => c.id === unpaid.id));
+assert.ok(older.payments.some((p) => p.charge_id === unpaid.id));
+const statement = (
+  await call(`/api/tenants/${t.id}/statement`, { cookie: a.cookie })
+).data;
+assert.ok(statement.charges.some((c) => c.month === "2023-01"));
+assert.ok(statement.payments.some((p) => p.paid_date === "2023-01-05"));
+await call(`/api/tenants/${t.id}/statement`, { cookie: b.cookie, status: 404 });
+// Money and lease changes are kept in an account's own history.
+const history = (await call("/api/activity", { cookie: a.cookie })).data;
+const kinds = history.entries.map((e) => e.entity + ":" + e.action);
+for (const kind of [
+  "payment:recorded",
+  "payment:reversed",
+  "charge:changed",
+  "charge:voided",
+  "lease:changed",
+  "lease:ended",
+])
+  assert.ok(kinds.includes(kind), kind);
+assert.equal(
+  (await call("/api/activity", { cookie: b.cookie })).data.entries.length,
+  0,
+);
+// Due dates stay inside the lease: moved forward to its start, back to its end.
+const property = (name) =>
+  call("/api/properties", {
+    method: "POST",
+    cookie: a.cookie,
+    status: 201,
+    body: {
+      name,
+      address: "2 Test Street",
+      city: "Sofia",
+      type: "Studio",
+      bedrooms: 1,
+      area: 30,
+      rent: "500",
+    },
+  }).then((r) => r.data);
+const leaseOn = (propertyId, start_date, end_date, due_day) =>
+  call("/api/leases", {
+    method: "POST",
+    cookie: a.cookie,
+    status: 201,
+    body: {
+      property_id: propertyId,
+      tenant_id: t.id,
+      start_date,
+      end_date,
+      rent: "500",
+      deposit: "0",
+      due_day,
+    },
+  }).then((r) => r.data);
+const short = await leaseOn(
+  (await property("Short stay")).id,
+  "2026-10-15",
+  "2026-11-10",
+  12,
+);
+for (const month of ["2026-10", "2026-11"])
+  await call("/api/charges/generate", {
+    method: "POST",
+    cookie: a.cookie,
+    body: { month },
+  });
+state = (await call("/api/workspace", { cookie: a.cookie })).data;
+assert.deepEqual(
+  state.charges
+    .filter((c) => c.lease_id === short.id)
+    .map((c) => c.due_date)
+    .sort(),
+  ["2026-10-15", "2026-11-10"],
+);
+// The daily job ends leases past their last day and creates this month's charges.
+const day = (offset) =>
+  new Date(Date.now() + offset * 864e5).toISOString().slice(0, 10);
+const cronProperty = await property("Cron test");
+const expired = await leaseOn(cronProperty.id, day(-60), day(-1), 1);
+const current = await leaseOn(cronProperty.id, day(0), day(60), 28);
+const cron = await fetch(base + "/cdn-cgi/handler/scheduled?cron=17+3+*+*+*");
+assert.equal(cron.status, 200);
+state = (await call("/api/workspace", { cookie: a.cookie })).data;
+assert.equal(state.leases.find((x) => x.id === expired.id).status, "ended");
+const thisMonth = day(0).slice(0, 7);
+assert.equal(
+  state.charges.find((c) => c.lease_id === current.id && c.month === thisMonth)
+    ?.due_date,
+  [thisMonth + "-28", day(0)].sort().at(-1),
+);
+// Self-service export and deletion remove only the requesting account.
+const leaver = await call("/api/auth/register", {
+  method: "POST",
+  body: {
+    name: "Leaving",
+    email: `leaving-${suffix}@example.com`,
+    password: "A valid test password 123",
+  },
+});
+const leaverHome = (
+  await call("/api/properties", {
+    method: "POST",
+    cookie: leaver.cookie,
+    status: 201,
+    body: {
+      name: "Leaving flat",
+      address: "3 Test Street",
+      city: "Sofia",
+      type: "Studio",
+      bedrooms: 1,
+      area: 20,
+      rent: "400",
+    },
+  })
+).data;
+const leaverFile = new FormData();
+leaverFile.set("property_id", leaverHome.id);
+leaverFile.set(
+  "file",
+  new Blob([await readFile("public/images/ns-img-232.webp")], {
+    type: "image/webp",
+  }),
+  "photo.webp",
+);
+const stored = (
+  await call("/api/files", {
+    method: "POST",
+    cookie: leaver.cookie,
+    body: leaverFile,
+    status: 201,
+  })
+).data;
+const exported = await call("/api/account/export", { cookie: leaver.cookie });
+assert.equal(exported.data.account.email, `leaving-${suffix}@example.com`);
+assert.equal(exported.data.properties[0].name, "Leaving flat");
+assert.equal(exported.data.files[0].download, "/api/files/" + stored.id);
+assert.ok(!JSON.stringify(exported.data).includes('"user_id"'));
+assert.ok(!JSON.stringify(exported.data).includes('"key"'));
+await call("/api/account/delete", {
+  method: "POST",
+  cookie: leaver.cookie,
+  status: 400,
+  body: { password: "wrong password!!", confirm: "DELETE" },
+});
+await call("/api/account/delete", {
+  method: "POST",
+  cookie: leaver.cookie,
+  status: 400,
+  body: { password: "A valid test password 123", confirm: "delete" },
+});
+await call("/api/account/delete", {
+  method: "POST",
+  cookie: leaver.cookie,
+  body: { password: "A valid test password 123", confirm: "DELETE" },
+});
+await call("/api/workspace", { cookie: leaver.cookie, status: 401 });
+await call("/api/auth/login", {
+  method: "POST",
+  status: 401,
+  body: {
+    email: `leaving-${suffix}@example.com`,
+    password: "A valid test password 123",
+  },
+});
+assert.equal(
+  (await call("/api/workspace", { cookie: b.cookie })).data.user.name,
+  "Test manager B",
+);
+// Account security: password change, other sessions, verification links.
+const credentials = {
+  email: `test-a-${suffix}@example.com`,
+  password: "A valid test password 123",
+};
+const second = await call("/api/auth/login", {
+  method: "POST",
+  body: credentials,
+});
+await call("/api/account/password", {
+  method: "POST",
+  cookie: a.cookie,
+  status: 400,
+  body: { current_password: "wrong password!!", password: "x".repeat(12) },
+});
+await call("/api/account/password", {
+  method: "POST",
+  cookie: a.cookie,
+  body: {
+    current_password: credentials.password,
+    password: "Another valid password 456",
+  },
+});
+await call("/api/workspace", { cookie: second.cookie, status: 401 });
+await call("/api/auth/login", {
+  method: "POST",
+  status: 401,
+  body: credentials,
+});
+await call("/api/auth/login", {
+  method: "POST",
+  status: 401,
+  body: { ...credentials, email: `nobody-${suffix}@example.com` },
+});
+const third = await call("/api/auth/login", {
+  method: "POST",
+  body: { ...credentials, password: "Another valid password 456" },
+});
+const signedOut = await call("/api/account/sign-out-others", {
+  method: "POST",
+  cookie: a.cookie,
+  body: {},
+});
+assert.equal(signedOut.data.signedOut, 1);
+await call("/api/workspace", { cookie: third.cookie, status: 401 });
+state = (await call("/api/workspace", { cookie: a.cookie })).data;
+assert.equal(state.emailUnverified, false);
+await call("/api/auth/verify", {
+  method: "POST",
+  status: 400,
+  body: { token: "0".repeat(64) },
+});
+// Without Stripe or an email provider these report that they are not set up.
+await call("/api/billing/webhook", { method: "POST", status: 503, body: {} });
+await call("/api/auth/forgot", {
+  method: "POST",
+  status: 503,
+  body: { email: credentials.email },
+});
+await call("/api/account/verify-email", {
+  method: "POST",
+  cookie: a.cookie,
+  status: 503,
+  body: {},
+});
 await call("/api/auth/logout", { method: "POST", cookie: a.cookie, body: {} });
 await call("/api/workspace", { cookie: a.cookie, status: 401 });
-for (const path of ["/", "/demo", "/signup", "/login", "/privacy", "/terms"])
+for (const path of [
+  "/",
+  "/demo",
+  "/signup",
+  "/login",
+  "/privacy",
+  "/terms",
+  "/verify-email",
+])
   await call(path);
 console.log(
-  "PASS: registration, protected routes, two-account isolation, leases, idempotent rent generation, partial payment, overpayment guard, reversal, maintenance, expenses, CSRF, R2 upload/ownership/delete, file signature checks, CSV injection safety, currency guard, lease ending, logout and public pages.",
+  "PASS: registration, protected routes, two-account isolation, leases and overlap rules, charge generation, editing and voiding, partial payment, overpayment guard, reversal, maintenance, expenses, CSRF, R2 upload/ownership/delete, file signature checks, CSV injection safety, currency guard, lease editing and ending, daily job, password change, session sign-out, logout and public pages.",
 );

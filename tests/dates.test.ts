@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { localDate, monthLabel } from "../src/lib/dates.ts";
+import { addMonths, localDate, monthLabel } from "../src/lib/dates.ts";
 test("month labels stay in their month west of UTC", () => {
   process.env.TZ = "America/New_York";
   assert.equal(monthLabel("2026-10", { month: "short" }), "Oct");
@@ -14,4 +14,16 @@ test("today follows the local calendar day east of UTC", () => {
   // 01:30 on 6 October in Sofia is still 5 October in UTC.
   assert.equal(localDate(new Date("2026-10-05T22:30:00Z")), "2026-10-06");
   assert.equal(localDate(new Date("2026-02-28T22:30:00Z")), "2026-03-01");
+});
+test("months move across year boundaries", () => {
+  assert.equal(addMonths("2026-10", -5), "2026-05");
+  assert.equal(addMonths("2026-02", -5), "2025-09");
+  assert.equal(addMonths("2026-12", 1), "2027-01");
+});
+test("month labels follow the chosen locale", () => {
+  assert.equal(
+    monthLabel("2026-10", { month: "long", year: "numeric" }, "de-DE"),
+    "Oktober 2026",
+  );
+  assert.equal(monthLabel("2026-10", { month: "short" }, "bg-BG"), "окт.");
 });

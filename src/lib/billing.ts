@@ -1,8 +1,12 @@
 import { bindings } from "./env";
 import { HttpError, subscriptionPlan } from "./domain";
-import { timingEqual } from "./auth";
-// POST when params are given, otherwise GET.
-export async function stripe(path: string, params?: Record<string, string>) {
+import { validStripeSignature } from "./crypto";
+// POST when params are given, otherwise GET; pass "DELETE" to cancel a resource.
+export async function stripe(
+  path: string,
+  params?: Record<string, string>,
+  method = params ? "POST" : "GET",
+) {
   const key = bindings().STRIPE_SECRET_KEY;
   if (!key)
     throw new HttpError(
@@ -10,7 +14,7 @@ export async function stripe(path: string, params?: Record<string, string>) {
       "Subscriptions are not enabled yet. Your free workspace remains available.",
     );
   const res = await fetch("https://api.stripe.com/v1/" + path, {
-    method: params ? "POST" : "GET",
+    method,
     headers: {
       Authorization: `Bearer ${key}`,
       ...(params
@@ -32,30 +36,12 @@ export async function webhook(request: Request) {
   if (!e.STRIPE_WEBHOOK_SECRET)
     throw new HttpError(503, "Billing is not configured.");
   const body = await request.text();
-  const sig = request.headers.get("stripe-signature") || "";
-  const parts = sig.split(",");
-  const ts = parts.find((x) => x.startsWith("t="))?.slice(2) || "";
-  if (!ts || Math.abs(Date.now() / 1000 - Number(ts)) > 300)
-    throw new HttpError(400, "Invalid signature.");
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(e.STRIPE_WEBHOOK_SECRET),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const bytes = new Uint8Array(
-    await crypto.subtle.sign(
-      "HMAC",
-      key,
-      new TextEncoder().encode(ts + "." + body),
-    ),
-  );
-  const expected = Array.from(bytes)
-    .map((x) => x.toString(16).padStart(2, "0"))
-    .join("");
   if (
-    !parts.some((x) => x.startsWith("v1=") && timingEqual(expected, x.slice(3)))
+    !(await validStripeSignature(
+      body,
+      request.headers.get("stripe-signature") || "",
+      e.STRIPE_WEBHOOK_SECRET,
+    ))
   )
     throw new HttpError(400, "Invalid signature.");
   const event = JSON.parse(body);

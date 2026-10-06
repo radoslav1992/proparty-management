@@ -1,5 +1,5 @@
 import { defineMiddleware } from "astro:middleware";
-import { sessionUser } from "./lib/auth";
+import { sessionToken, sessionUser } from "./lib/auth";
 export const onRequest = defineMiddleware(async (context, next) => {
   const { request, url, cookies } = context;
   context.locals.user = null;
@@ -15,9 +15,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   }
   if (url.pathname.startsWith("/app") || url.pathname.startsWith("/api/")) {
     try {
-      context.locals.user = await sessionUser(
-        cookies.get("proparty_session")?.value,
-      );
+      context.locals.user = await sessionUser(sessionToken(cookies));
     } catch {
       return new Response(
         JSON.stringify({
@@ -34,6 +32,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("X-Frame-Options", "DENY");
+  if (url.protocol === "https:")
+    response.headers.set(
+      "Strict-Transport-Security",
+      "max-age=31536000; includeSubDomains",
+    );
   response.headers.set(
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=()",

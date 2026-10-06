@@ -5,14 +5,15 @@ An Astro property-management SaaS for independent landlords and small rental por
 ## Included
 
 - Responsive marketing site adapted from the supplied property-management template, using its photography and the same GSAP directional blur reveals, ScrollTrigger timing and Lenis desktop smooth scrolling. Reduced-motion preferences are respected.
-- Account registration, login, logout and configurable password recovery.
+- Account registration with email confirmation, login, password change, sign-out of other devices and configurable password recovery.
 - Empty private workspaces and a separate read-only demo at `/demo`.
-- Properties, tenant directory, leases and monthly rent charges.
-- Partial payments, outstanding balances, payment reversals and expense tracking.
+- Properties, tenant directory, leases (editable, with advance bookings) and monthly rent charges created daily.
+- Partial payments, overdue list across months, printable tenant statements, payment reversals and expense tracking.
 - Maintenance board with priority, assignment and status.
-- Private property images and PDF documents in R2.
-- Dashboard, monthly cash-flow reports and CSV export.
-- Cloudflare Workers AI assistant with account-scoped context and daily quotas.
+- Private property images (with browser-made thumbnails) and PDF documents in R2.
+- Dashboard, monthly cash-flow reports, CSV export and an activity history of every payment, charge and lease change.
+- Cloudflare Workers AI assistant with account-scoped context, streamed Markdown answers, follow-up questions and daily quotas.
+- Self-service data export (JSON) and account deletion; dates and amounts in the user's chosen format.
 - Optional Stripe subscriptions and signed webhooks.
 
 ## Start
@@ -32,20 +33,23 @@ Resource names: D1 `proparty-management`, R2 `proparty-management-files`. Add th
 ## Verify
 
 ```sh
+npm run lint
+npm run format:check
 npm run check
 npm test
 python3 tests/database.py
 npm run build
 ```
 
-`tests/integration.mjs` exercises the actual built Worker over local HTTP, including two-account isolation, partial payments, private uploads, invalid origin rejection and CSV export. See the deployment guide to start the test runtime.
+`npm run test:integration` runs the built Worker locally and exercises it over HTTP (`tests/integration.mjs`, `tests/integration-email.mjs`) and in Chromium (`tests/smoke.mjs`), including two-account isolation, partial payments, private uploads, invalid origin rejection, the daily job, CSV export and Content-Security-Policy violations. See the deployment guide for details.
 
 ## Structure
 
 - `src/pages/index.astro`: landing page
-- `src/components/Workspace.astro`, `src/scripts/workspace.ts`: application UI
-- `src/pages/api/[...path].ts`: authenticated API
-- `src/lib`: auth, validation, billing and Cloudflare bindings
+- `src/components/Workspace.astro`, `src/scripts/app`: application UI (lit-html templates, one module per view)
+- `src/pages/api/[...path].ts` → `src/server`: API router, request schemas and one module per area in `src/server/routes`
+- `src/worker.ts`, `src/lib/jobs.ts`: Worker entry and the daily Cron Trigger job
+- `src/lib`: auth, validation, billing, shared types, dates, Markdown and Cloudflare bindings
 - `migrations`: D1 schema and financial invariants
 - `public/images`, `public/vendor`: selected template assets and animation libraries
 

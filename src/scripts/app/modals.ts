@@ -13,6 +13,7 @@ import {
   demo,
   el,
   lease,
+  leaseState,
   property,
   sum,
   tenant,
@@ -402,14 +403,121 @@ export function fileForm(propertyId = "") {
   });
 }
 
-export function propertyDetail(id: string) {
+interface PropertyHistory {
+  charges: (StatementCharge & { tenant: string; last_paid: string | null })[];
+  expenses: { total_cents: number; count: number };
+}
+/** The same shape the history endpoint returns, built from the demo's local data. */
+function localPropertyHistory(propertyId: string): PropertyHistory {
+  const leases = app.data.leases.filter((l) => l.property_id === propertyId);
+  const expenses = app.data.expenses.filter(
+    (e) => e.property_id === propertyId,
+  );
+  return {
+    charges: app.data.charges
+      .filter((c) => leases.some((l) => l.id === c.lease_id))
+      .map((c) => ({
+        ...c,
+        property: property(propertyId)?.name ?? "",
+        tenant: tenant(lease(c.lease_id)?.tenant_id ?? "")?.name ?? "",
+        last_paid:
+          app.data.payments
+            .filter((p) => p.charge_id === c.id)
+            .map((p) => p.paid_date)
+            .sort()
+            .at(-1) ?? null,
+      }))
+      .sort(
+        (a, b) =>
+          b.month.localeCompare(a.month) ||
+          b.due_date.localeCompare(a.due_date),
+      ),
+    expenses: {
+      total_cents: sum(expenses, (e) => e.amount_cents),
+      count: expenses.length,
+    },
+  };
+}
+const leaseHistory = (propertyId: string) => {
+  const leases = app.data.leases
+    .filter((l) => l.property_id === propertyId)
+    .sort((a, b) => b.start_date.localeCompare(a.start_date));
+  return leases.length
+    ? table(
+        ["Tenant", "Term", "Monthly rent", "Status"],
+        leases.map(
+          (l) =>
+            html`<tr>
+              <td><strong>${tenant(l.tenant_id)?.name ?? "—"}</strong></td>
+              <td>
+                ${dateLabel(l.start_date)}<small
+                  >to ${dateLabel(l.end_date)}</small
+                >
+              </td>
+              <td>${cash(l.rent_cents)}</td>
+              <td>${badge(leaseState(l))}</td>
+            </tr>`,
+        ),
+      )
+    : html`<p class="detail-note">No leases yet.</p>`;
+};
+const rentHistory = (history: PropertyHistory | Error | null) => {
+  if (!history)
+    return html`<div class="loading compact">
+      <span class="spinner"></span>Loading rent history…
+    </div>`;
+  if (history instanceof Error)
+    return html`<p class="detail-note">
+      The rent history could not be loaded: ${history.message}
+    </p>`;
+  const charged = sum(history.charges, (c) => c.amount_cents),
+    collected = sum(history.charges, (c) => c.paid_cents);
+  return html`${
+      history.charges.length
+        ? table(
+            ["Month", "Tenant", "Charged", "Paid", "Last payment", "Balance"],
+            history.charges.map(
+              (c) =>
+                html`<tr>
+                  <td>
+                    ${monthLabel(c.month, { month: "short", year: "numeric" })}
+                  </td>
+                  <td>${c.tenant}</td>
+                  <td>${cash(c.amount_cents)}</td>
+                  <td>${cash(c.paid_cents)}</td>
+                  <td>${c.last_paid ? dateLabel(c.last_paid) : "—"}</td>
+                  <td>
+                    <strong>${cash(c.amount_cents - c.paid_cents)}</strong>
+                  </td>
+                </tr>`,
+            ),
+          )
+        : html`<p class="detail-note">No rent charges yet.</p>`
+    }
+    <div class="detail-info property-totals">
+      <div>
+        <small>Rent charged, all time</small><strong>${cash(charged)}</strong>
+      </div>
+      <div><small>Collected</small><strong>${cash(collected)}</strong></div>
+      <div>
+        <small>Expenses (${history.expenses.count})</small
+        ><strong>${cash(history.expenses.total_cents)}</strong>
+      </div>
+      <div>
+        <small>Collected less expenses</small
+        ><strong>${cash(collected - history.expenses.total_cents)}</strong>
+      </div>
+    </div>`;
+};
+/** A property's details, photos and documents, its leases, and its rent history loaded in full from the server. */
+export async function propertyDetail(id: string) {
   const p = property(id);
   if (!p) return;
   const l = activeLease(id),
     t = l && tenant(l.tenant_id);
   const files = app.data.files.filter((f) => f.property_id === id);
-  openModal(
-    html`${intro(p.name, `${p.address}, ${p.city}`)}
+  const view = (history: PropertyHistory | Error | null) =>
+    html`${intro(p.name, `${p.address}, ${p.city}`, "property-history")}
       ${badge(l ? "Occupied" : "Vacant", l ? "green" : "vacant")}
       <div class="detail-info">
         <div>
@@ -463,8 +571,24 @@ export function propertyDetail(id: string) {
           id,
           "button small outline danger",
         )}
-      </div>`,
-  );
+      </div>
+      <h3 class="detail-heading">Leases</h3>
+      ${leaseHistory(id)}
+      <h3 class="detail-heading">Rent history</h3>
+      ${rentHistory(history)}`;
+  const key = openModal(view(demo ? localPropertyHistory(id) : null));
+  if (demo) return;
+  let history: PropertyHistory | Error;
+  try {
+    history = (await api(
+      `properties/${encodeURIComponent(id)}/history`,
+    )) as PropertyHistory;
+  } catch (err) {
+    history = err as Error;
+  }
+  // Patched in place, so scrolling and focus stay where they are; skipped if the user has moved on.
+  if (el.dialog.open && modalKey === key)
+    render(keyed(key, view(history)), el.editor);
 }
 
 interface StatementCharge {

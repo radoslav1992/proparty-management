@@ -522,6 +522,21 @@ const statement = (
 assert.ok(statement.charges.some((c) => c.month === "2023-01"));
 assert.ok(statement.payments.some((p) => p.paid_date === "2023-01-05"));
 await call(`/api/tenants/${t.id}/statement`, { cookie: b.cookie, status: 404 });
+// A property's history covers every month, however old, with the last payment date.
+const propertyHistory = (
+  await call(`/api/properties/${nextLease.property_id}/history`, {
+    cookie: a.cookie,
+  })
+).data;
+const oldEntry = propertyHistory.charges.find((c) => c.id === unpaid.id);
+assert.equal(oldEntry.last_paid, "2023-01-05");
+assert.equal(oldEntry.tenant, "Test tenant");
+assert.ok(propertyHistory.charges.every((c) => !c.voided));
+assert.equal(typeof propertyHistory.expenses.total_cents, "number");
+await call(`/api/properties/${nextLease.property_id}/history`, {
+  cookie: b.cookie,
+  status: 404,
+});
 // Money and lease changes are kept in an account's own history.
 const history = (await call("/api/activity", { cookie: a.cookie })).data;
 const kinds = history.entries.map((e) => e.entity + ":" + e.action);

@@ -53,7 +53,7 @@ try {
     await go(view);
   await go("properties");
   await act("property-detail");
-  await seen("#editor[open] h2#editor-title");
+  await seen("#editor[open] .property-totals");
   await page.keyboard.press("Escape");
   await go("rent");
   await seen(".arrears");
@@ -175,6 +175,13 @@ try {
   await act("end-lease");
   await save();
   await seen("text=History retained");
+
+  // The property's own history lists its lease and rent, loaded from the server.
+  await go("properties");
+  await act("property-detail");
+  await seen("#editor[open] .property-totals");
+  await seen("#editor[open] td strong:text('Smoke Tenant')");
+  await page.keyboard.press("Escape");
 
   await go("activity");
   await seen("td:has-text('Payment reversed')");

@@ -985,6 +985,17 @@ dialog::backdrop {
   object-fit: cover;
   border-radius: 10px;
 }
+.detail-heading {
+  font-size: 17px;
+  margin: 30px 0 12px;
+}
+.detail-note {
+  font-size: 13px;
+  color: #66715e;
+}
+.loading.compact {
+  padding: 30px 20px;
+}
 .detail-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1270,7 +1281,8 @@ dialog::backdrop {
   gap: 12px 16px;
   margin-bottom: 24px;
 }
-dialog:has(.statement) {
+dialog:has(.statement),
+dialog:has(.property-history) {
   width: min(820px, calc(100vw - 28px));
 }
 @media print {

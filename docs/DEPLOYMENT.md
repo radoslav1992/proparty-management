@@ -141,7 +141,7 @@ Rent payments are entered manually; this release does not collect tenant payment
 
 The assistant uses a bounded account-only snapshot of properties, recent charges and open maintenance, plus the last six messages of the conversation. Answers stream to the browser and are shown as a small, escaped Markdown subset. It does not receive uploaded documents, perform writes, send messages, or supply legal/tax advice. AI costs are limited by daily atomic D1 quotas; a request that fails before the answer starts refunds the quota.
 
-The workspace loads the last 24 months of payments, charges and expenses plus every unpaid charge, and fetches older months when a user picks them; tenant statements always use the full history. Payments, charges and leases are recorded in an append-only `audit_log` (shown under Activity, included in the data export).
+The workspace loads the last 24 months of payments, charges and expenses plus every unpaid charge, and fetches older months when a user picks them; tenant statements and the property detail's rent history always use the full history. Payments, charges and leases are recorded in an append-only `audit_log` (shown under Activity, included in the data export).
 
 The demo is read-only and separate from real account data. New accounts start empty. R2 files are limited to JPEG/PNG/WebP/PDF, 10 MB each, 30 per property. Photos get a thumbnail made in the browser (at most 640 px wide, without camera metadata) stored beside the original as `<key>.thumb`; originals are kept unchanged. Interface text is English; the date and number format is a per-user setting.
 

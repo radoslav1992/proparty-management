@@ -117,6 +117,23 @@ export const accountRoutes = [
     ]);
     return json({ charges: charges.results, payments: payments.results });
   }),
+  // Every rent charge a property has had, with its tenant and last payment, plus all-time expenses.
+  get("properties/:id/history", async (c, { id }) => {
+    await c.owned("properties", id);
+    const [charges, expenses] = await c.db.batch([
+      c.db
+        .prepare(
+          "SELECT c.id,c.month,c.due_date,c.amount_cents,c.paid_cents,t.name AS tenant,(SELECT MAX(paid_date) FROM payments WHERE charge_id=c.id) AS last_paid FROM charges c JOIN leases l ON l.id=c.lease_id JOIN tenants t ON t.id=l.tenant_id WHERE c.user_id=? AND l.property_id=? AND c.voided=0 ORDER BY c.month DESC,c.due_date DESC",
+        )
+        .bind(c.userId, id),
+      c.db
+        .prepare(
+          "SELECT COALESCE(SUM(amount_cents),0) AS total_cents,COUNT(*) AS count FROM expenses WHERE user_id=? AND property_id=?",
+        )
+        .bind(c.userId, id),
+    ]);
+    return json({ charges: charges.results, expenses: expenses.results[0] });
+  }),
   patch("settings", async (c) => {
     const input = parse(settingsInput, await readBody(c.request));
     if (input.currency !== c.user.currency) {

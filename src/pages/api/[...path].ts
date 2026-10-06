@@ -20,7 +20,15 @@ import {
   hashPassword,
   verifyPassword,
   rateLimit,
+  sessionToken,
+  setSessionCookie,
+  clearSessionCookies,
 } from "../../lib/auth";
+import {
+  emailConfigured,
+  sendPasswordReset,
+  sendVerification,
+} from "../../lib/email";
 import { stripe, webhook } from "../../lib/billing";
 import { generateCharges } from "../../lib/jobs";
 const json = (value: unknown, status = 200) =>
@@ -71,6 +79,19 @@ export const ALL: APIRoute = async (ctx) => {
     return json({ error: "Something went wrong. Please try again." }, 500);
   }
 };
+// Hashed once per isolate so a login for an unknown email costs as much as a real one.
+let dummyHash: Promise<string> | undefined;
+// Runs work after the response is sent; failures are logged, not shown.
+function later(ctx: APIContext, task: () => Promise<unknown>) {
+  ctx.locals.cfContext.waitUntil(
+    task().catch((err) =>
+      console.error(
+        "Background task failed",
+        err instanceof Error ? err.message : "unknown",
+      ),
+    ),
+  );
+}
 async function handle(ctx: APIContext) {
   const { request, url, locals, cookies } = ctx;
   const path = ctx.params.path || "";
@@ -91,13 +112,13 @@ async function handle(ctx: APIContext) {
     );
     const b = await body(request);
     if (path === "auth/logout") {
-      const s = cookies.get("proparty_session")?.value;
+      const s = sessionToken(cookies);
       if (s)
         await db
           .prepare("DELETE FROM sessions WHERE token_hash=?")
           .bind(await digest(s))
           .run();
-      cookies.delete("proparty_session", { path: "/" });
+      clearSessionCookies(cookies);
       return json({ ok: true });
     }
     if (path === "auth/reset") {
@@ -120,11 +141,44 @@ async function handle(ctx: APIContext) {
           400,
           "This reset link has expired or already been used.",
         );
+      // Opening the emailed link also proves the address belongs to the user.
       await db.batch([
         db
-          .prepare("UPDATE users SET password_hash=? WHERE id=?")
+          .prepare(
+            "UPDATE users SET password_hash=?,email_verified_at=COALESCE(email_verified_at,CURRENT_TIMESTAMP) WHERE id=?",
+          )
           .bind(hash, row.user_id),
         db.prepare("DELETE FROM sessions WHERE user_id=?").bind(row.user_id),
+        db
+          .prepare("DELETE FROM reset_tokens WHERE user_id=?")
+          .bind(row.user_id),
+      ]);
+      return json({ ok: true });
+    }
+    if (path === "auth/verify") {
+      const row = await db
+        .prepare(
+          "DELETE FROM verify_tokens WHERE token_hash=? AND expires_at>? RETURNING user_id",
+        )
+        .bind(
+          await digest(text(b.token, "Confirmation token", 100)),
+          Math.floor(Date.now() / 1000),
+        )
+        .first<{ user_id: string }>();
+      if (!row)
+        throw new HttpError(
+          400,
+          "This confirmation link has expired or already been used. Send a new one from your workspace.",
+        );
+      await db.batch([
+        db
+          .prepare(
+            "UPDATE users SET email_verified_at=COALESCE(email_verified_at,CURRENT_TIMESTAMP) WHERE id=?",
+          )
+          .bind(row.user_id),
+        db
+          .prepare("DELETE FROM verify_tokens WHERE user_id=?")
+          .bind(row.user_id),
       ]);
       return json({ ok: true });
     }
@@ -133,42 +187,18 @@ async function handle(ctx: APIContext) {
       throw new HttpError(400, "Enter a valid email address.");
     await rateLimit("auth:email:" + (await digest(email)), 10, 900);
     if (path === "auth/forgot") {
-      if (!e.RESEND_API_KEY || !e.EMAIL_FROM)
+      if (!emailConfigured())
         throw new HttpError(
           503,
           "Password recovery email has not been configured. Contact the site administrator.",
         );
+      await rateLimit("auth:forgot:" + (await digest(email)), 3, 3600);
       const u = await db
         .prepare("SELECT id FROM users WHERE email=?")
         .bind(email)
         .first<{ id: string }>();
-      if (u) {
-        const t = token();
-        await db
-          .prepare(
-            "INSERT INTO reset_tokens(token_hash,user_id,expires_at) VALUES(?,?,?)",
-          )
-          .bind(await digest(t), u.id, Math.floor(Date.now() / 1000) + 1800)
-          .run();
-        const r = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer " + e.RESEND_API_KEY,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            from: e.EMAIL_FROM,
-            to: email,
-            subject: "Reset your Proparty password",
-            text: `Reset your password within 30 minutes: ${url.origin}/reset-password?token=${t}\nIf you did not request this, ignore this message.`,
-          }),
-        });
-        if (!r.ok)
-          throw new HttpError(
-            502,
-            "Email service unavailable. Please try later.",
-          );
-      }
+      // The token and email are created after responding, so the reply looks and takes the same whether or not the account exists.
+      if (u) later(ctx, () => sendPasswordReset(u.id, email, url.origin));
       return json({
         ok: true,
         message: "If an account exists, a reset link has been sent.",
@@ -200,12 +230,19 @@ async function handle(ctx: APIContext) {
         throw err;
       }
       user = { id };
+      if (emailConfigured())
+        later(ctx, () => sendVerification(id, email, url.origin));
     } else if (path === "auth/login") {
       user = await db
         .prepare("SELECT id,password_hash FROM users WHERE email=?")
         .bind(email)
         .first();
-      if (!user || !(await verifyPassword(password, user.password_hash)))
+      const valid = await verifyPassword(
+        password,
+        user?.password_hash ??
+          (await (dummyHash ??= hashPassword("not a real password"))),
+      );
+      if (!user || !valid)
         throw new HttpError(401, "Email or password is incorrect.");
     } else throw new HttpError(404, "Not found.");
     const t = token();
@@ -215,18 +252,20 @@ async function handle(ctx: APIContext) {
       )
       .bind(await digest(t), user.id, Math.floor(Date.now() / 1000) + 604800)
       .run();
-    cookies.set("proparty_session", t, {
-      path: "/",
-      httpOnly: true,
-      secure: url.protocol === "https:",
-      sameSite: "lax",
-      maxAge: 604800,
-    });
+    setSessionCookie(cookies, url, t);
     return json({ ok: true });
   }
   const user = locals.user;
   if (!user) throw new HttpError(401, "Please sign in to continue.");
   const userId = user.id;
+  // AI requests and uploads cost money, so they wait for a confirmed email once email is set up.
+  const requireVerifiedEmail = () => {
+    if (emailConfigured() && !user.email_verified_at)
+      throw new HttpError(
+        403,
+        "Confirm your email address to use this. Check your inbox, or send a new link from the banner at the top of your workspace.",
+      );
+  };
   const owned = async (table: string, id: unknown) => {
     const row = await db
       .prepare(`SELECT * FROM ${table} WHERE id=? AND user_id=?`)
@@ -267,6 +306,7 @@ async function handle(ctx: APIContext) {
       user,
       limits: planFor(user.plan),
       aiUsage: usage?.count || 0,
+      emailUnverified: emailConfigured() && !user.email_verified_at,
       billingEnabled: !!(
         e.STRIPE_SECRET_KEY &&
         e.STRIPE_WEBHOOK_SECRET &&
@@ -274,6 +314,49 @@ async function handle(ctx: APIContext) {
         e.STRIPE_PRICE_PORTFOLIO
       ),
     });
+  }
+  if (path === "account/password" && method === "POST") {
+    const b = await body(request);
+    await rateLimit("account:password:" + userId, 10, 900);
+    const current = text(b.current_password, "Current password", 128);
+    const password = text(b.password, "New password", 128);
+    if (password.length < 12)
+      throw new HttpError(400, "Use at least 12 characters for your password.");
+    const row = await db
+      .prepare("SELECT password_hash FROM users WHERE id=?")
+      .bind(userId)
+      .first<{ password_hash: string }>();
+    if (!row || !(await verifyPassword(current, row.password_hash)))
+      throw new HttpError(400, "Your current password is incorrect.");
+    const keep = await digest(sessionToken(cookies) || "");
+    await db.batch([
+      db
+        .prepare("UPDATE users SET password_hash=? WHERE id=?")
+        .bind(await hashPassword(password), userId),
+      db
+        .prepare("DELETE FROM sessions WHERE user_id=? AND token_hash!=?")
+        .bind(userId, keep),
+      db.prepare("DELETE FROM reset_tokens WHERE user_id=?").bind(userId),
+    ]);
+    return json({ ok: true });
+  }
+  if (path === "account/sign-out-others" && method === "POST") {
+    const r = await db
+      .prepare("DELETE FROM sessions WHERE user_id=? AND token_hash!=?")
+      .bind(userId, await digest(sessionToken(cookies) || ""))
+      .run();
+    return json({ ok: true, signedOut: r.meta.changes });
+  }
+  if (path === "account/verify-email" && method === "POST") {
+    if (user.email_verified_at) return json({ ok: true });
+    if (!emailConfigured())
+      throw new HttpError(
+        503,
+        "Email has not been configured. Contact the site administrator.",
+      );
+    await rateLimit("account:verify:" + userId, 3, 3600);
+    later(ctx, () => sendVerification(userId, user.email, url.origin));
+    return json({ ok: true });
   }
   if (path === "settings" && method === "PATCH") {
     const b = await body(request);
@@ -435,6 +518,7 @@ async function handle(ctx: APIContext) {
     );
   }
   if (path === "ai" && method === "POST") {
+    requireVerifiedEmail();
     const b = await body(request);
     const prompt = text(b.prompt, "Question", 2000);
     const day = today();
@@ -531,6 +615,7 @@ async function handle(ctx: APIContext) {
       return json({ ok: true });
     }
     if (!id && method === "POST") {
+      requireVerifiedEmail();
       const length = Number(request.headers.get("content-length") || 0);
       if (length > 11 * 1024 * 1024)
         throw new HttpError(413, "Maximum file size is 10 MB.");

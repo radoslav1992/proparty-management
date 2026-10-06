@@ -1,3 +1,4 @@
+import type { AstroCookies } from "astro";
 import { bindings } from "./env";
 import { HttpError } from "./domain";
 const enc = new TextEncoder();
@@ -42,8 +43,31 @@ export async function sessionUser(cookie: string | undefined) {
   if (!cookie || !/^[a-f0-9]{64}$/.test(cookie)) return null;
   return bindings()
     .DB.prepare(
-      "SELECT u.id,u.name,u.email,u.company,u.currency,u.plan,u.stripe_customer_id,u.stripe_subscription_id FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?",
+      "SELECT u.id,u.name,u.email,u.company,u.currency,u.plan,u.stripe_customer_id,u.stripe_subscription_id,u.email_verified_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?",
     )
     .bind(await digest(cookie), Math.floor(Date.now() / 1000))
     .first<App.Locals["user"]>();
+}
+// __Host- pins the cookie to this exact origin over HTTPS. Plain-HTTP local runs and sessions issued before the rename use the old name.
+const SECURE_COOKIE = "__Host-proparty_session",
+  PLAIN_COOKIE = "proparty_session";
+export const sessionToken = (cookies: AstroCookies) =>
+  cookies.get(SECURE_COOKIE)?.value ?? cookies.get(PLAIN_COOKIE)?.value;
+export function setSessionCookie(
+  cookies: AstroCookies,
+  url: URL,
+  value: string,
+) {
+  const secure = url.protocol === "https:";
+  cookies.set(secure ? SECURE_COOKIE : PLAIN_COOKIE, value, {
+    path: "/",
+    httpOnly: true,
+    secure,
+    sameSite: "lax",
+    maxAge: 604800,
+  });
+}
+export function clearSessionCookies(cookies: AstroCookies) {
+  cookies.delete(SECURE_COOKIE, { path: "/", secure: true });
+  cookies.delete(PLAIN_COOKIE, { path: "/" });
 }

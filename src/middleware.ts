@@ -1,5 +1,5 @@
 import { defineMiddleware } from "astro:middleware";
-import { sessionUser } from "./lib/auth";
+import { sessionToken, sessionUser } from "./lib/auth";
 export const onRequest = defineMiddleware(async (context, next) => {
   const { request, url, cookies } = context;
   context.locals.user = null;
@@ -15,9 +15,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   }
   if (url.pathname.startsWith("/app") || url.pathname.startsWith("/api/")) {
     try {
-      context.locals.user = await sessionUser(
-        cookies.get("proparty_session")?.value,
-      );
+      context.locals.user = await sessionUser(sessionToken(cookies));
     } catch {
       return new Response(
         JSON.stringify({

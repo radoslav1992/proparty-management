@@ -25,6 +25,11 @@ const config: Record<
     subtitle: "Choose a strong new password for your account.",
     action: "reset",
   },
+  "verify-email": {
+    title: "One last step.",
+    subtitle: "Confirm this is your email address to finish setting up.",
+    action: "verify",
+  },
 };
 const legal = page === "privacy" || page === "terms";
 const c = config[page || ""];
@@ -156,7 +161,7 @@ if (!c && !legal) return Astro.redirect("/404");
               />
             </label>
           )}
-          {page !== "reset-password" && (
+          {["login", "signup", "forgot-password"].includes(page!) && (
             <label>
               Email address
               <input
@@ -169,7 +174,7 @@ if (!c && !legal) return Astro.redirect("/404");
               />
             </label>
           )}
-          {page !== "forgot-password" && (
+          {["login", "signup", "reset-password"].includes(page!) && (
             <label>
               Password
               <input
@@ -187,7 +192,7 @@ if (!c && !legal) return Astro.redirect("/404");
               />
             </label>
           )}
-          {page === "reset-password" && (
+          {(page === "reset-password" || page === "verify-email") && (
             <input
               type="hidden"
               name="token"
@@ -202,7 +207,9 @@ if (!c && !legal) return Astro.redirect("/404");
                 ? "Create free workspace"
                 : page === "forgot-password"
                   ? "Send reset link"
-                  : "Save new password"}{" "}
+                  : page === "verify-email"
+                    ? "Confirm email"
+                    : "Save new password"}{" "}
             <span aria-hidden="true">↗</span>
           </button>
           {page === "signup" && (
@@ -227,6 +234,9 @@ if (!c && !legal) return Astro.redirect("/404");
     </main>
   )}
   <script>
+    // The token is already in the form; keep it out of history and later Referer headers.
+    if (new URLSearchParams(location.search).has("token"))
+      history.replaceState(null, "", location.pathname);
     document
       .querySelector<HTMLFormElement>("[data-auth]")
       ?.addEventListener("submit", async (event) => {

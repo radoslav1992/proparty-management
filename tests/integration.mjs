@@ -437,9 +437,81 @@ assert.equal(
     ?.due_date,
   [thisMonth + "-28", day(0)].sort().at(-1),
 );
+// Account security: password change, other sessions, verification links.
+const credentials = {
+  email: `test-a-${suffix}@example.com`,
+  password: "A valid test password 123",
+};
+const second = await call("/api/auth/login", {
+  method: "POST",
+  body: credentials,
+});
+await call("/api/account/password", {
+  method: "POST",
+  cookie: a.cookie,
+  status: 400,
+  body: { current_password: "wrong password!!", password: "x".repeat(12) },
+});
+await call("/api/account/password", {
+  method: "POST",
+  cookie: a.cookie,
+  body: {
+    current_password: credentials.password,
+    password: "Another valid password 456",
+  },
+});
+await call("/api/workspace", { cookie: second.cookie, status: 401 });
+await call("/api/auth/login", {
+  method: "POST",
+  status: 401,
+  body: credentials,
+});
+await call("/api/auth/login", {
+  method: "POST",
+  status: 401,
+  body: { ...credentials, email: `nobody-${suffix}@example.com` },
+});
+const third = await call("/api/auth/login", {
+  method: "POST",
+  body: { ...credentials, password: "Another valid password 456" },
+});
+const signedOut = await call("/api/account/sign-out-others", {
+  method: "POST",
+  cookie: a.cookie,
+  body: {},
+});
+assert.equal(signedOut.data.signedOut, 1);
+await call("/api/workspace", { cookie: third.cookie, status: 401 });
+state = (await call("/api/workspace", { cookie: a.cookie })).data;
+assert.equal(state.emailUnverified, false);
+await call("/api/auth/verify", {
+  method: "POST",
+  status: 400,
+  body: { token: "0".repeat(64) },
+});
+// Without an email provider these report that email is not set up.
+await call("/api/auth/forgot", {
+  method: "POST",
+  status: 503,
+  body: { email: credentials.email },
+});
+await call("/api/account/verify-email", {
+  method: "POST",
+  cookie: a.cookie,
+  status: 503,
+  body: {},
+});
 await call("/api/auth/logout", { method: "POST", cookie: a.cookie, body: {} });
 await call("/api/workspace", { cookie: a.cookie, status: 401 });
-for (const path of ["/", "/demo", "/signup", "/login", "/privacy", "/terms"])
+for (const path of [
+  "/",
+  "/demo",
+  "/signup",
+  "/login",
+  "/privacy",
+  "/terms",
+  "/verify-email",
+])
   await call(path);
 console.log(
   "PASS: registration, protected routes, two-account isolation, leases, idempotent rent generation, partial payment, overpayment guard, reversal, maintenance, expenses, CSRF, R2 upload/ownership/delete, file signature checks, CSV injection safety, currency guard, lease ending, logout and public pages.",

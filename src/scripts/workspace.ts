@@ -164,21 +164,26 @@ function render() {
     .forEach((a) =>
       a.classList.toggle("active", (a as HTMLElement).dataset.view === view),
     );
-  main.innerHTML = (
-    {
-      overview: overview,
-      properties: properties,
-      tenants: tenants,
-      leases: leases,
-      rent: rent,
-      maintenance: maintenance,
-      expenses: expenses,
-      documents: documents,
-      reports: reports,
-      assistant: assistant,
-      settings: settings,
-    } as Record<string, () => string>
-  )[view]();
+  main.innerHTML =
+    (data.emailUnverified ? verifyBanner() : "") +
+    (
+      {
+        overview: overview,
+        properties: properties,
+        tenants: tenants,
+        leases: leases,
+        rent: rent,
+        maintenance: maintenance,
+        expenses: expenses,
+        documents: documents,
+        reports: reports,
+        assistant: assistant,
+        settings: settings,
+      } as Record<string, () => string>
+    )[view]();
+}
+function verifyBanner() {
+  return `<div class="note-box verify-banner" role="status"><span>Confirm your email address, ${esc(data.user.email)}, to use the AI assistant and file uploads. The link is in your inbox.</span>${btn("Send a new link", "resend-verification", "", "button small outline")}</div>`;
 }
 function financial(m: string) {
   const c = data.charges.filter((c: Row) => c.month === m),
@@ -516,7 +521,7 @@ function settings() {
       )
       .join(
         "",
-      )}</div>${data.user.stripe_subscription_id ? btn("Manage subscription", "billing-portal", "", "button small outline") : ""}<p style="font-size:11px;margin-top:22px">Account: ${esc(data.user.email)}</p><a class="text-link" style="font-size:12px" href="/forgot-password">Reset your password →</a></section></div>`
+      )}</div>${data.user.stripe_subscription_id ? btn("Manage subscription", "billing-portal", "", "button small outline") : ""}<p style="font-size:11px;margin-top:22px">Account: ${esc(data.user.email)}</p></section><section class="panel"><form class="settings-form" id="password-form"><h2>Sign-in and security</h2>${field("Current password", "current_password", "", "password", true, 'autocomplete="current-password" maxlength="128"')}${field("New password", "password", "", "password", true, 'autocomplete="new-password" minlength="12" maxlength="128"')}<small>Changing your password signs you out on every other device.</small><div class="form-message" role="alert"></div><button class="button" type="submit">Change password</button>${btn("Sign out of other devices", "sign-out-others", "", "button small outline")}</form></section></div>`
   );
 }
 function field(
@@ -889,6 +894,18 @@ async function action(action: string, id = "", el?: HTMLButtonElement) {
       toast("Record removed.");
       await load();
     }
+    if (action === "resend-verification") {
+      await api("account/verify-email", "POST", {});
+      toast(`We sent a new confirmation link to ${data.user.email}.`);
+    }
+    if (action === "sign-out-others") {
+      const r = await api("account/sign-out-others", "POST", {});
+      toast(
+        r.signedOut
+          ? `Signed out of ${r.signedOut} other ${r.signedOut === 1 ? "session" : "sessions"}.`
+          : "No other devices were signed in.",
+      );
+    }
     if (action === "generate-charges") {
       await api("charges/generate", "POST", { month: selectedMonth });
       toast("Rent charges are up to date.");
@@ -982,7 +999,8 @@ main.addEventListener("input", (event) => {
 });
 document.addEventListener("submit", async (event) => {
   const form = event.target as HTMLFormElement;
-  if (!form.matches(".record-form,#settings-form,#ai-form")) return;
+  if (!form.matches(".record-form,#settings-form,#password-form,#ai-form"))
+    return;
   event.preventDefault();
   if (!ensureWritable()) return;
   const button = form.querySelector<HTMLButtonElement>("button[type=submit]")!;
@@ -1023,6 +1041,12 @@ document.addEventListener("submit", async (event) => {
       return;
     }
     const values = Object.fromEntries(new FormData(form));
+    if (form.id === "password-form") {
+      await api("account/password", "POST", values);
+      form.reset();
+      toast("Password changed. Other devices have been signed out.");
+      return;
+    }
     if (form.id === "settings-form") {
       await api("settings", "PATCH", values);
       toast("Workspace details saved.");

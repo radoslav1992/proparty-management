@@ -1270,3 +1270,29 @@ dialog::backdrop {
   gap: 12px 16px;
   margin-bottom: 24px;
 }
+dialog:has(.statement) {
+  width: min(820px, calc(100vw - 28px));
+}
+@media print {
+  .workspace,
+  #toast,
+  .skip-link,
+  .dialog-close,
+  dialog .form-actions {
+    display: none !important;
+  }
+  dialog[open] {
+    position: static;
+    width: auto;
+    max-height: none;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+  }
+  dialog::backdrop {
+    display: none;
+  }
+}
+.arrears {
+  margin-bottom: 28px;
+}

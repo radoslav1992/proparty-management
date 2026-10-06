@@ -33,6 +33,12 @@ try {
   await page.locator('[data-action="property-detail"]').first().click();
   await page.waitForSelector("#editor[open] h2#editor-title");
   await page.keyboard.press("Escape");
+  // The sample data has one part-paid charge, so the ledger shows arrears and a statement.
+  await page.locator('.sidebar [data-view="rent"]').first().click();
+  await page.waitForSelector(".arrears");
+  await page.locator('[data-action="tenant-statement"]').first().click();
+  await page.waitForSelector("#editor[open] .statement");
+  await page.keyboard.press("Escape");
   await page.goto(base + "/signup");
   await page.fill("[name=name]", "Smoke Test");
   await page.fill("[name=email]", `smoke-${Date.now()}@example.com`);

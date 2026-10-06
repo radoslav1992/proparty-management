@@ -213,6 +213,7 @@ function overview() {
     (s: number, c: Row) => s + c.amount_cents - c.paid_cents,
     0,
   );
+  const overdue = overdueCharges();
   const ratio = f.charged ? Math.round((f.allocated / f.charged) * 100) : 0;
   const now = new Date(selectedMonth + "-01T00:00:00Z");
   const months = Array.from({ length: 6 }, (_, i) =>
@@ -228,7 +229,7 @@ function overview() {
       "Here’s what’s happening across your rental portfolio.",
       btn("+ Add property", "new-properties"),
     ) +
-    `<div class="stat-grid">${stat("Total properties", String(data.properties.length), `${occupied} occupied · ${data.properties.length - occupied} vacant`, "⌂")}${stat("Rent collected", cash(f.received), monthLabel(selectedMonth, { month: "long", year: "numeric" }), "↗")}${stat("Outstanding rent", cash(outstanding), "Across all generated rent charges", "◷")}${stat("Open maintenance", String(data.maintenance.filter((m: Row) => m.status !== "resolved").length), "A little attention goes a long way", "⚒")}</div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><div><h2>Your cash flow</h2><p>A clear view of the last six months</p></div>${badge("6 months")}</div><div class="chart"><div class="chart-legend"><span>Rent collected</span><span>Expenses</span></div><table class="sr-only"><caption>Rent collected and expenses, last six months</caption><thead><tr><th>Month</th><th>Rent collected</th><th>Expenses</th></tr></thead><tbody>${fs.map((f, i) => `<tr><td>${monthLabel(months[i], { month: "long", year: "numeric" })}</td><td>${cash(f.received)}</td><td>${cash(f.expenses)}</td></tr>`).join("")}</tbody></table><div class="bar-chart" aria-hidden="true">${fs.map((f, i) => `<div class="bar-group"><div class="bar" style="height:${(f.received / max) * 100}%" title="${months[i]} rent: ${cash(f.received)}"></div><div class="bar expense" style="height:${(f.expenses / max) * 100}%" title="${months[i]} expenses: ${cash(f.expenses)}"></div></div>`).join("")}</div><div class="chart-months" aria-hidden="true">${months.map((m) => `<span>${monthLabel(m, { month: "short" })}</span>`).join("")}</div></div></section><section class="panel"><div class="panel-head"><h2>Rent collection</h2>${badge(monthLabel(selectedMonth, { month: "short" }))}</div><div class="collection-card"><div class="donut" style="--percent:${ratio}"><div><strong>${ratio}%</strong><small>of this month’s charges</small></div></div><div class="collection-details"><div><span>Allocated payments</span><strong>${cash(f.allocated)}</strong></div><div><span>Still to collect</span><strong>${cash(f.charged - f.allocated)}</strong></div></div></div></section></div><div class="section-row"><h2>Your properties <span class="pill-count">${data.properties.length}</span></h2><a href="?view=properties" data-view="properties">View all properties ${arrow}</a></div>${data.properties.length ? `<div class="property-grid">${data.properties.slice(0, 3).map(propertyCard).join("")}</div>` : `<div class="panel">${empty("Make yourself at home.", "Add your first rental unit, then connect a tenant and lease to start tracking rent.", "Add your first property", "new-properties")}</div>`}<div class="ai-nudge"><span class="round-icon">✧</span><div><h3>A helpful second pair of eyes.</h3><p>Ask about rent balances, repairs, or your next tenant message.</p></div><button class="button" data-view="assistant">Ask your assistant <span aria-hidden="true">↗</span></button></div>`
+    `<div class="stat-grid">${stat("Total properties", String(data.properties.length), `${occupied} occupied · ${data.properties.length - occupied} vacant`, "⌂")}${stat("Rent collected", cash(f.received), monthLabel(selectedMonth, { month: "long", year: "numeric" }), "↗")}${stat("Outstanding rent", cash(outstanding), overdue.length ? `${overdue.length} overdue · ${cash(sum(overdue, "amount_cents") - sum(overdue, "paid_cents"))}` : "Nothing overdue", "◷")}${stat("Open maintenance", String(data.maintenance.filter((m: Row) => m.status !== "resolved").length), "A little attention goes a long way", "⚒")}</div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><div><h2>Your cash flow</h2><p>A clear view of the last six months</p></div>${badge("6 months")}</div><div class="chart"><div class="chart-legend"><span>Rent collected</span><span>Expenses</span></div><table class="sr-only"><caption>Rent collected and expenses, last six months</caption><thead><tr><th>Month</th><th>Rent collected</th><th>Expenses</th></tr></thead><tbody>${fs.map((f, i) => `<tr><td>${monthLabel(months[i], { month: "long", year: "numeric" })}</td><td>${cash(f.received)}</td><td>${cash(f.expenses)}</td></tr>`).join("")}</tbody></table><div class="bar-chart" aria-hidden="true">${fs.map((f, i) => `<div class="bar-group"><div class="bar" style="height:${(f.received / max) * 100}%" title="${months[i]} rent: ${cash(f.received)}"></div><div class="bar expense" style="height:${(f.expenses / max) * 100}%" title="${months[i]} expenses: ${cash(f.expenses)}"></div></div>`).join("")}</div><div class="chart-months" aria-hidden="true">${months.map((m) => `<span>${monthLabel(m, { month: "short" })}</span>`).join("")}</div></div></section><section class="panel"><div class="panel-head"><h2>Rent collection</h2>${badge(monthLabel(selectedMonth, { month: "short" }))}</div><div class="collection-card"><div class="donut" style="--percent:${ratio}"><div><strong>${ratio}%</strong><small>of this month’s charges</small></div></div><div class="collection-details"><div><span>Allocated payments</span><strong>${cash(f.allocated)}</strong></div><div><span>Still to collect</span><strong>${cash(f.charged - f.allocated)}</strong></div></div></div></section></div><div class="section-row"><h2>Your properties <span class="pill-count">${data.properties.length}</span></h2><a href="?view=properties" data-view="properties">View all properties ${arrow}</a></div>${data.properties.length ? `<div class="property-grid">${data.properties.slice(0, 3).map(propertyCard).join("")}</div>` : `<div class="panel">${empty("Make yourself at home.", "Add your first rental unit, then connect a tenant and lease to start tracking rent.", "Add your first property", "new-properties")}</div>`}<div class="ai-nudge"><span class="round-icon">✧</span><div><h3>A helpful second pair of eyes.</h3><p>Ask about rent balances, repairs, or your next tenant message.</p></div><button class="button" data-view="assistant">Ask your assistant <span aria-hidden="true">↗</span></button></div>`
   );
 }
 function properties() {
@@ -263,7 +264,7 @@ function tenants() {
             const l = data.leases.find(
               (l: Row) => l.tenant_id === t.id && l.status === "active",
             );
-            return `<tr><td><strong>${esc(t.name)}</strong></td><td>${esc(t.email || "—")}</td><td>${esc(t.phone || "—")}</td><td>${l ? esc(property(l.property_id).name) : "No active lease"}</td><td><div class="action-inline">${btn("Edit", "edit-tenants", t.id, "icon-button")}${btn("Delete", "delete-tenants", t.id, "icon-button danger")}</div></td></tr>`;
+            return `<tr><td><strong>${esc(t.name)}</strong></td><td>${esc(t.email || "—")}</td><td>${esc(t.phone || "—")}</td><td>${l ? esc(property(l.property_id).name) : "No active lease"}</td><td><div class="action-inline">${btn("Statement", "tenant-statement", t.id, "icon-button")}${btn("Edit", "edit-tenants", t.id, "icon-button")}${btn("Delete", "delete-tenants", t.id, "icon-button danger")}</div></td></tr>`;
           }),
         )
       : empty(
@@ -309,6 +310,71 @@ function leaseBadge(l: Row) {
   if (l.end_date < today()) return badge("Expired");
   return l.start_date > today() ? badge("Upcoming") : badge("active");
 }
+const overdueCharges = () =>
+  data.charges
+    .filter((c: Row) => c.paid_cents < c.amount_cents && c.due_date < today())
+    .sort((a: Row, b: Row) => a.due_date.localeCompare(b.due_date));
+const daysSince = (d: string) =>
+  Math.round((Date.parse(today()) - Date.parse(d)) / 864e5);
+function arrears() {
+  const rows = overdueCharges();
+  if (!rows.length)
+    return '<p class="month-caption">No rent is overdue. Nice.</p>';
+  return (
+    `<section class="arrears"><div class="section-row"><h2>Overdue across all months <span class="pill-count">${rows.length}</span></h2><strong>${cash(sum(rows, "amount_cents") - sum(rows, "paid_cents"))}</strong></div>` +
+    table(
+      [
+        "Property / tenant",
+        "Month",
+        "Due date",
+        "Days overdue",
+        "Balance",
+        "Action",
+      ],
+      rows.map((c: Row) => {
+        const l = lease(c.lease_id);
+        return `<tr><td><strong>${esc(property(l.property_id).name)}</strong><small>${esc(tenant(l.tenant_id).name)}</small></td><td>${monthLabel(c.month, { month: "short", year: "numeric" })}</td><td>${dateLabel(c.due_date)}</td><td>${daysSince(c.due_date)}</td><td>${cash(c.amount_cents - c.paid_cents)}</td><td><div class="action-inline">${btn("Record payment", "record-payment", c.id, "button small outline")}${btn("Statement", "tenant-statement", l.tenant_id, "icon-button")}</div></td></tr>`;
+      }),
+    ) +
+    "</section>"
+  );
+}
+function tenantStatement(id: string) {
+  const t = tenant(id);
+  if (!t.id) return;
+  const leaseIds = data.leases
+    .filter((l: Row) => l.tenant_id === id)
+    .map((l: Row) => l.id);
+  const charges = data.charges.filter((c: Row) =>
+    leaseIds.includes(c.lease_id),
+  );
+  const chargeIds = charges.map((c: Row) => c.id);
+  // Charges sort before payments on the same day, so the running balance never dips below what was due.
+  const entries = [
+    ...charges.map((c: Row) => ({
+      date: c.due_date,
+      order: 0,
+      text: `Rent · ${property(lease(c.lease_id).property_id).name} · ${monthLabel(c.month, { month: "short", year: "numeric" })}`,
+      amount: c.amount_cents,
+    })),
+    ...data.payments
+      .filter((p: Row) => chargeIds.includes(p.charge_id))
+      .map((p: Row) => ({
+        date: p.paid_date,
+        order: 1,
+        text: `Payment${p.reference ? " · " + p.reference : ""}`,
+        amount: -p.amount_cents,
+      })),
+  ].sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order);
+  let balance = 0;
+  const rows = entries.map((e) => {
+    balance += e.amount;
+    return `<tr><td>${dateLabel(e.date)}</td><td>${esc(e.text)}</td><td>${e.amount > 0 ? cash(e.amount) : ""}</td><td>${e.amount < 0 ? cash(-e.amount) : ""}</td><td><strong>${cash(balance)}</strong></td></tr>`;
+  });
+  openModal(
+    `<div class="editor-heading statement"><h2>Statement for ${esc(t.name)}</h2><p>${esc([t.email, t.phone].filter(Boolean).join(" · ") || "No contact details")} · Prepared ${dateLabel(today())}</p></div>${rows.length ? table(["Date", "Description", "Charged", "Paid", "Balance"], rows) : "<p>No rent charges yet for this tenant.</p>"}<div class="detail-info"><div><small>Total charged</small><strong>${cash(sum(charges, "amount_cents"))}</strong></div><div><small>Total paid</small><strong>${cash(sum(charges, "paid_cents"))}</strong></div><div><small>Balance due</small><strong>${cash(balance)}</strong></div></div><div class="form-actions">${btn("Close", "close", "", "button outline")}${btn("Print", "print-statement", "", "button")}</div>`,
+  );
+}
 function chargeStatus(c: Row) {
   return c.paid_cents >= c.amount_cents
     ? "paid"
@@ -326,6 +392,7 @@ function rent() {
       "Generate charges for active leases. Record payments when they arrive.",
       monthPicker() + btn("Generate charges", "generate-charges"),
     ) +
+    arrears() +
     `<div class="stat-grid">${stat("Charged this month", cash(f.charged), `${f.charges.length} rent charges`)}${stat("Allocated to charges", cash(f.allocated), "Includes payments on any date")}${stat("Outstanding", cash(f.charged - f.allocated), "For this month’s charges", "◷")}${stat("Cash received", cash(f.received), "Payments recorded this month")}</div><p class="month-caption">This month's charges are created automatically each day for active leases. Generate other months here; it is safe to repeat. Charges use the full lease rent; partial months are not prorated.</p>` +
     (f.charges.length
       ? table(
@@ -832,6 +899,14 @@ async function action(action: string, id = "", el?: HTMLButtonElement) {
   }
   if (action === "property-detail") {
     propertyDetail(id);
+    return;
+  }
+  if (action === "tenant-statement") {
+    tenantStatement(id);
+    return;
+  }
+  if (action === "print-statement") {
+    print();
     return;
   }
   if (action.startsWith("new-")) {

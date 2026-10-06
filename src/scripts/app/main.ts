@@ -1,6 +1,5 @@
 import { html, nothing, render as paint } from "lit-html";
 import { addMonths } from "../../lib/dates";
-import { demoWorkspace } from "../../lib/demo";
 import type { Workspace } from "../../lib/types";
 import { app, demo, el, isView, VIEWS, type View } from "./state";
 import { btn, empty, locale, toast } from "./ui";
@@ -118,7 +117,8 @@ async function load() {
     const since = app.data?.windowStart;
     app.data = (
       demo
-        ? demoWorkspace()
+        ? // Sample data is only fetched by the demo, not shipped to signed-in users.
+          (await import("../../lib/demo")).demoWorkspace()
         : await api("workspace" + (since ? "?since=" + since : ""))
     ) as Workspace;
     merge({ charges: app.data.charges });

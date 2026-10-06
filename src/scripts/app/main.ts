@@ -8,6 +8,7 @@ import {
   chargeForm,
   confirmAction,
   deleteAccountForm,
+  editorChanged,
   endLeaseForm,
   expenseForm,
   fileForm,
@@ -195,7 +196,7 @@ const DELETE_TEXT: Record<string, [string, string]> = {
 
 async function action(name: string, id: string, button: HTMLButtonElement) {
   // Actions that only open or close something work in the demo too.
-  if (name === "close") return el.dialog.close();
+  if (name === "close") return closeEditor();
   if (name === "reload") return load();
   if (name === "property-detail") return propertyDetail(id);
   if (name === "tenant-statement") return tenantStatement(id);
@@ -445,13 +446,31 @@ el.main.addEventListener("change", (event) => {
     render();
   }
 });
-// The search box keeps focus and caret because lit only patches what changed.
+// The search box keeps focus and caret because lit only patches what changed; fast typing renders once per frame.
+let searchFrame = 0;
 el.main.addEventListener("input", (event) => {
   const input = event.target as HTMLInputElement;
   if (input.id === "search") {
     app.query = input.value;
-    render();
+    cancelAnimationFrame(searchFrame);
+    searchFrame = requestAnimationFrame(render);
   }
+});
+/** Closing a form someone has edited asks first, so a stray Esc or click keeps their typing. */
+const keepEdits = () =>
+  editorChanged() && !confirm("Discard the changes in this form?");
+function closeEditor() {
+  if (!keepEdits()) el.dialog.close();
+}
+// Esc is handled here rather than in "cancel", which browsers may skip on a repeated Esc.
+el.dialog.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && editorChanged()) {
+    event.preventDefault();
+    closeEditor();
+  }
+});
+el.dialog.addEventListener("cancel", (event) => {
+  if (keepEdits()) event.preventDefault();
 });
 // A new lease starts from the chosen property's advertised rent.
 el.editor.addEventListener("change", (event) => {

@@ -33,13 +33,26 @@ import {
   toast,
 } from "./ui";
 
-let modalKey = 0;
+let modalKey = 0,
+  opened = "";
+/** Every field of the dialog's forms as text, to tell whether anything was edited. */
+const formState = () =>
+  [...el.editor.querySelectorAll("form")]
+    .map((form) =>
+      [...new FormData(form)]
+        .map(([k, v]) => `${k}=${v instanceof File ? v.name + v.size : v}`)
+        .join("&"),
+    )
+    .join("|");
 /** Each dialog gets fresh DOM, so values typed into a cancelled form never come back. */
 export function openModal(content: TemplateResult) {
   render(keyed(++modalKey, content), el.editor);
+  opened = formState();
   if (!el.dialog.open) el.dialog.showModal();
   return modalKey;
 }
+/** Whether a form in the dialog differs from how it opened. */
+export const editorChanged = () => el.dialog.open && formState() !== opened;
 const intro = (title: string, description: string, cls = "") =>
   html`<div class="editor-heading ${cls}">
     <h2 id="editor-title">${title}</h2>

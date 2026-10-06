@@ -573,11 +573,11 @@ table {
   border-collapse: collapse;
   width: 100%;
   text-align: left;
-  font-size: 12px;
+  font-size: 14px;
   white-space: nowrap;
 }
 th {
-  font-size: 10px;
+  font-size: 12px;
   color: #89937f;
   letter-spacing: 0.4px;
   font-weight: 500;
@@ -597,18 +597,18 @@ td strong {
 }
 td small {
   display: block;
-  font-size: 10px;
+  font-size: 12px;
   margin-top: 4px;
 }
 tr:last-child td {
   border-bottom: 0;
 }
 td .button {
-  font-size: 10px;
+  font-size: 12px;
   padding: 7px 12px;
 }
 td .icon-button {
-  font-size: 10px;
+  font-size: 12px;
   padding: 6px 8px;
 }
 .empty {

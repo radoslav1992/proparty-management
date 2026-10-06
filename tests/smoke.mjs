@@ -71,6 +71,16 @@ try {
   await page.waitForURL("**/app");
   await seen(".stat-grid");
 
+  // Esc on an edited form asks first; declining keeps the typing.
+  await act("new-properties");
+  await page.fill("#editor [name=name]", "Half-typed");
+  page.once("dialog", (d) => d.dismiss());
+  await page.keyboard.press("Escape");
+  assert.equal(await page.inputValue("#editor [name=name]"), "Half-typed");
+  page.once("dialog", (d) => d.accept());
+  await page.click("#editor .dialog-close button");
+  await page.waitForSelector("#editor:not([open])", { state: "attached" });
+
   await act("new-properties");
   await page.fill("#editor [name=name]", "Smoke Flat");
   await page.fill("#editor [name=address]", "1 Smoke Street");

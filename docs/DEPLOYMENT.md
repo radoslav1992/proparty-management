@@ -32,6 +32,8 @@ npm run db:remote
 
 Run these commands in a terminal from the repository root. Authenticate with `npx wrangler login` first if needed. Do not skip this: the landing page can deploy successfully while registration fails because the tables do not exist.
 
+Run `npm run db:remote` again whenever a release adds a numbered migration (for example `0002_indexes.sql`). Wrangler applies only the migrations not yet recorded in the database. Never edit a migration that has already been applied; add a new numbered file instead.
+
 ### Recovering from an incomplete console import
 
 Pull the latest `main` and run `npm run db:remote`. The initial migration uses `IF NOT EXISTS`, so it can complete a partially imported initial schema without dropping existing tables or rows. This is recovery for this initial schema, not a mechanism for upgrading an unrelated database schema.

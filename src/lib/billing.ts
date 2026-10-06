@@ -1,7 +1,8 @@
 import { bindings } from "./env";
-import { HttpError } from "./domain";
+import { HttpError, subscriptionPlan } from "./domain";
 import { timingEqual } from "./auth";
-export async function stripe(path: string, params: Record<string, string>) {
+// POST when params are given, otherwise GET.
+export async function stripe(path: string, params?: Record<string, string>) {
   const key = bindings().STRIPE_SECRET_KEY;
   if (!key)
     throw new HttpError(
@@ -9,12 +10,14 @@ export async function stripe(path: string, params: Record<string, string>) {
       "Subscriptions are not enabled yet. Your free workspace remains available.",
     );
   const res = await fetch("https://api.stripe.com/v1/" + path, {
-    method: "POST",
+    method: params ? "POST" : "GET",
     headers: {
       Authorization: `Bearer ${key}`,
-      "Content-Type": "application/x-www-form-urlencoded",
+      ...(params
+        ? { "Content-Type": "application/x-www-form-urlencoded" }
+        : {}),
     },
-    body: new URLSearchParams(params),
+    body: params && new URLSearchParams(params),
   });
   const data = (await res.json()) as any;
   if (!res.ok)
@@ -72,27 +75,29 @@ export async function webhook(request: Request) {
         : obj.subscription?.id;
   else if (event.type.startsWith("customer.subscription.")) subId = obj.id;
   if (subId) {
-    const r = await fetch(
-      "https://api.stripe.com/v1/subscriptions/" + encodeURIComponent(subId),
-      { headers: { Authorization: `Bearer ${e.STRIPE_SECRET_KEY}` } },
-    );
-    if (!r.ok) throw new HttpError(502, "Could not verify subscription.");
-    const sub = (await r.json()) as any;
+    const sub = await stripe("subscriptions/" + encodeURIComponent(subId));
     const userId = sub.metadata?.user_id;
     if (userId) {
-      const price = sub.items?.data?.[0]?.price?.id;
-      const active = ["active", "trialing"].includes(sub.status);
-      const plan = active
-        ? price === e.STRIPE_PRICE_PORTFOLIO
-          ? "portfolio"
-          : price === e.STRIPE_PRICE_LANDLORD
-            ? "landlord"
-            : "free"
-        : "free";
+      const plan = subscriptionPlan(
+        sub.status,
+        sub.items?.data?.[0]?.price?.id,
+        {
+          landlord: e.STRIPE_PRICE_LANDLORD,
+          portfolio: e.STRIPE_PRICE_PORTFOLIO,
+        },
+      );
+      // An event for a replaced subscription must not overwrite the current one; a subscription granting a paid plan takes over.
       await e.DB.prepare(
-        "UPDATE users SET plan=?,stripe_customer_id=?,stripe_subscription_id=? WHERE id=?",
+        "UPDATE users SET plan=?,stripe_customer_id=?,stripe_subscription_id=? WHERE id=? AND (? OR stripe_subscription_id IS NULL OR stripe_subscription_id=?)",
       )
-        .bind(plan, sub.customer, sub.id, userId)
+        .bind(
+          plan,
+          sub.customer,
+          sub.id,
+          userId,
+          plan !== "free" ? 1 : 0,
+          sub.id,
+        )
         .run();
     }
   }

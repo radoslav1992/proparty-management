@@ -3,7 +3,7 @@ import sqlite3, pathlib, unittest
 class DatabaseTests(unittest.TestCase):
  def setUp(self):
   self.db=sqlite3.connect(':memory:')
-  self.db.executescript(pathlib.Path('migrations/0001_initial.sql').read_text())
+  for m in sorted(pathlib.Path('migrations').glob('*.sql')):self.db.executescript(m.read_text())
   for u in ['a','b']:
    self.db.execute('INSERT INTO users(id,email,name,password_hash) VALUES(?,?,?,?)',(u,u+'@example.com',u,'test'))
    self.db.execute('INSERT INTO properties(id,user_id,name,address,city) VALUES(?,?,?,?,?)',('p'+u,u,'Home','Street','Sofia'))
@@ -44,6 +44,10 @@ class DatabaseTests(unittest.TestCase):
    self.assertEqual(db.execute('SELECT id FROM users').fetchall(),[('existing',)])
    self.assertEqual(db.execute("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name").fetchall(),[('payment_apply',),('payment_limit',),('payment_reverse',)])
    self.assertIsNotNone(db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='webhook_events'").fetchone())
+ def test_account_queries_use_indexes(self):
+  for t in ['properties','tenants','leases','charges','payments','maintenance','expenses','files']:
+   plan=' '.join(r[3] for r in self.db.execute(f'EXPLAIN QUERY PLAN SELECT * FROM {t} WHERE user_id=?',('a',)))
+   self.assertNotIn('SCAN',plan,t)
  def test_ai_quota_is_atomic(self):
   q='INSERT INTO ai_usage(user_id,day,count) VALUES(?,?,1) ON CONFLICT(user_id,day) DO UPDATE SET count=count+1 WHERE count<? RETURNING count'
   for i in range(5):self.assertEqual(self.db.execute(q,('a','2026-10-04',5)).fetchone()[0],i+1)

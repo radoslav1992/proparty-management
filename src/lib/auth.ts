@@ -2,7 +2,7 @@ import { bindings } from "./env";
 import { HttpError } from "./domain";
 const enc = new TextEncoder();
 export const hex = (b: ArrayBuffer | Uint8Array) =>
-  Array.from(new Uint8Array(b instanceof Uint8Array ? b.buffer : b))
+  Array.from(b instanceof Uint8Array ? b : new Uint8Array(b))
     .map((x) => x.toString(16).padStart(2, "0"))
     .join("");
 export const digest = async (s: string) =>

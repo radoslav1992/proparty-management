@@ -13,6 +13,7 @@ import {
   csvCell,
   chargeDue,
   planFor,
+  subscriptionEnded,
 } from "../../lib/domain";
 import {
   digest,
@@ -179,12 +180,21 @@ async function handle(ctx: APIContext) {
         );
       const name = text(b.name, "Name", 100);
       const id = uid();
-      await db
-        .prepare(
-          "INSERT INTO users(id,email,name,password_hash) VALUES(?,?,?,?)",
-        )
-        .bind(id, email, name, await hashPassword(password))
-        .run();
+      try {
+        await db
+          .prepare(
+            "INSERT INTO users(id,email,name,password_hash) VALUES(?,?,?,?)",
+          )
+          .bind(id, email, name, await hashPassword(password))
+          .run();
+      } catch (err) {
+        if (String(err).includes("UNIQUE constraint"))
+          throw new HttpError(
+            409,
+            "An account with this email already exists. Log in or reset your password.",
+          );
+        throw err;
+      }
       user = { id };
     } else if (path === "auth/login") {
       user = await db
@@ -291,24 +301,56 @@ async function handle(ctx: APIContext) {
   if (path === "billing/checkout" && method === "POST") {
     const b = await body(request);
     const plan = choice(b.plan, ["landlord", "portfolio"]);
-    if (user.stripe_subscription_id && user.plan !== "free")
-      throw new HttpError(
-        409,
-        "Use Manage subscription to change your existing plan.",
-      );
     const price =
       plan === "landlord" ? e.STRIPE_PRICE_LANDLORD : e.STRIPE_PRICE_PORTFOLIO;
     if (!price || !e.STRIPE_WEBHOOK_SECRET)
       throw new HttpError(503, "This plan is not available yet.");
+    if (
+      user.stripe_subscription_id &&
+      (user.plan !== "free" ||
+        !subscriptionEnded(
+          (
+            await stripe(
+              "subscriptions/" +
+                encodeURIComponent(user.stripe_subscription_id),
+            )
+          ).status,
+        ))
+    )
+      throw new HttpError(
+        409,
+        "Use Manage subscription to change your existing plan.",
+      );
+    // One Stripe customer per account, so checkouts left open in other tabs can be expired.
+    let customer = user.stripe_customer_id;
+    if (!customer) {
+      const c = await stripe("customers", {
+        email: user.email,
+        name: user.name,
+        "metadata[user_id]": userId,
+      });
+      customer = (await db
+        .prepare(
+          "UPDATE users SET stripe_customer_id=COALESCE(stripe_customer_id,?) WHERE id=? RETURNING stripe_customer_id",
+        )
+        .bind(c.id, userId)
+        .first<string>("stripe_customer_id"))!;
+    }
+    const open = await stripe(
+      `checkout/sessions?customer=${encodeURIComponent(customer)}&status=open&limit=10`,
+    );
+    await Promise.allSettled(
+      open.data.map((x: { id: string }) =>
+        stripe(`checkout/sessions/${encodeURIComponent(x.id)}/expire`, {}),
+      ),
+    );
     const s = await stripe("checkout/sessions", {
       mode: "subscription",
       "line_items[0][price]": price,
       "line_items[0][quantity]": "1",
       "subscription_data[metadata][user_id]": userId,
       client_reference_id: userId,
-      ...(user.stripe_customer_id
-        ? { customer: user.stripe_customer_id }
-        : { customer_email: user.email }),
+      customer,
       success_url: url.origin + "/app?view=settings&billing=success",
       cancel_url: url.origin + "/app?view=settings",
     });
@@ -344,7 +386,7 @@ async function handle(ctx: APIContext) {
               userId,
               l.id,
               m,
-              chargeDue(m, l.due_day, l.start_date),
+              chargeDue(m, l.due_day, l.start_date, l.end_date),
               l.rent_cents,
             ),
         ),
@@ -353,12 +395,29 @@ async function handle(ctx: APIContext) {
   }
   if (path === "reports" && method === "GET") {
     const m = month(url.searchParams.get("month"));
-    const props = await db
-      .prepare(
-        "SELECT id,name,address FROM properties WHERE user_id=? ORDER BY name",
-      )
-      .bind(userId)
-      .all<any>();
+    const from = m + "-01",
+      to = m + "-31";
+    const [props, incomeRows, spentRows] = await db.batch<any>([
+      db
+        .prepare(
+          "SELECT id,name,address FROM properties WHERE user_id=? ORDER BY name",
+        )
+        .bind(userId),
+      db
+        .prepare(
+          "SELECT l.property_id AS id,SUM(p.amount_cents) AS n FROM payments p JOIN charges c ON c.id=p.charge_id JOIN leases l ON l.id=c.lease_id WHERE p.user_id=? AND p.paid_date BETWEEN ? AND ? GROUP BY l.property_id",
+        )
+        .bind(userId, from, to),
+      db
+        .prepare(
+          "SELECT property_id AS id,SUM(amount_cents) AS n FROM expenses WHERE user_id=? AND expense_date BETWEEN ? AND ? GROUP BY property_id",
+        )
+        .bind(userId, from, to),
+    ]);
+    const totals = (r: D1Result<any>) =>
+      new Map<string, number>(r.results.map((x) => [x.id, x.n]));
+    const income = totals(incomeRows),
+      spent = totals(spentRows);
     const rows = [
       [
         "Property",
@@ -371,26 +430,16 @@ async function handle(ctx: APIContext) {
       ],
     ];
     for (const p of props.results) {
-      const inc = await db
-        .prepare(
-          "SELECT COALESCE(SUM(p.amount_cents),0) AS n FROM payments p JOIN charges c ON c.id=p.charge_id JOIN leases l ON l.id=c.lease_id WHERE p.user_id=? AND l.property_id=? AND substr(p.paid_date,1,7)=?",
-        )
-        .bind(userId, p.id, m)
-        .first<{ n: number }>();
-      const exp = await db
-        .prepare(
-          "SELECT COALESCE(SUM(amount_cents),0) AS n FROM expenses WHERE user_id=? AND property_id=? AND substr(expense_date,1,7)=?",
-        )
-        .bind(userId, p.id, m)
-        .first<{ n: number }>();
+      const inc = income.get(p.id) || 0,
+        exp = spent.get(p.id) || 0;
       rows.push([
         p.name,
         p.address,
         m,
         user.currency,
-        ((inc?.n || 0) / 100).toFixed(2),
-        ((exp?.n || 0) / 100).toFixed(2),
-        (((inc?.n || 0) - (exp?.n || 0)) / 100).toFixed(2),
+        (inc / 100).toFixed(2),
+        (exp / 100).toFixed(2),
+        ((inc - exp) / 100).toFixed(2),
       ]);
     }
     return new Response(
@@ -481,7 +530,11 @@ async function handle(ctx: APIContext) {
         headers: {
           "Content-Type": f.mime,
           "Content-Disposition": `${f.kind === "image" ? "inline" : "attachment"}; filename="${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}"`,
-          "Cache-Control": "private, no-store",
+          // File IDs never change content, so images can stay in the browser cache.
+          "Cache-Control":
+            f.kind === "image"
+              ? "private, max-age=86400, immutable"
+              : "private, no-store",
           "X-Content-Type-Options": "nosniff",
         },
       });

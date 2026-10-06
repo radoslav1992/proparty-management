@@ -38,7 +38,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=()",
   );
-  if (url.pathname.startsWith("/api") || url.pathname.startsWith("/app"))
+  if (
+    (url.pathname.startsWith("/api") || url.pathname.startsWith("/app")) &&
+    !response.headers.has("Cache-Control")
+  )
     response.headers.set("Cache-Control", "no-store");
   return response;
 });

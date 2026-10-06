@@ -1,11 +1,8 @@
 import type { AstroCookies } from "astro";
 import { bindings } from "./env";
 import { HttpError } from "./domain";
+import { hex, timingEqual } from "./crypto";
 const enc = new TextEncoder();
-export const hex = (b: ArrayBuffer | Uint8Array) =>
-  Array.from(b instanceof Uint8Array ? b : new Uint8Array(b))
-    .map((x) => x.toString(16).padStart(2, "0"))
-    .join("");
 export const digest = async (s: string) =>
   hex(await crypto.subtle.digest("SHA-256", enc.encode(s)));
 export const token = () => hex(crypto.getRandomValues(new Uint8Array(32)));
@@ -18,12 +15,6 @@ export async function hashPassword(password: string, salt = token()) {
     ["deriveBits"],
   );
   return `${salt}:${hex(await crypto.subtle.deriveBits({ name: "PBKDF2", salt: enc.encode(salt), iterations: 100000, hash: "SHA-256" }, key, 256))}`;
-}
-export function timingEqual(a: string, b: string) {
-  let d = a.length ^ b.length;
-  for (let i = 0; i < Math.max(a.length, b.length); i++)
-    d |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
-  return d === 0;
 }
 export async function verifyPassword(p: string, h: string) {
   return timingEqual(await hashPassword(p, h.split(":")[0]), h);

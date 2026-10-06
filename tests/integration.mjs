@@ -489,7 +489,8 @@ await call("/api/auth/verify", {
   status: 400,
   body: { token: "0".repeat(64) },
 });
-// Without an email provider these report that email is not set up.
+// Without Stripe or an email provider these report that they are not set up.
+await call("/api/billing/webhook", { method: "POST", status: 503, body: {} });
 await call("/api/auth/forgot", {
   method: "POST",
   status: 503,
@@ -514,5 +515,5 @@ for (const path of [
 ])
   await call(path);
 console.log(
-  "PASS: registration, protected routes, two-account isolation, leases, idempotent rent generation, partial payment, overpayment guard, reversal, maintenance, expenses, CSRF, R2 upload/ownership/delete, file signature checks, CSV injection safety, currency guard, lease ending, logout and public pages.",
+  "PASS: registration, protected routes, two-account isolation, leases and overlap rules, charge generation, editing and voiding, partial payment, overpayment guard, reversal, maintenance, expenses, CSRF, R2 upload/ownership/delete, file signature checks, CSV injection safety, currency guard, lease editing and ending, daily job, password change, session sign-out, logout and public pages.",
 );

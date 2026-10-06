@@ -444,12 +444,17 @@ await call("/api/ai", {
     history: Array(7).fill({ role: "user", content: "Earlier" }),
   },
 });
-await call("/api/ai", {
+const aiFailure = await call("/api/ai", {
   method: "POST",
   cookie: a.cookie,
   status: 502,
   body: { prompt: "Summarise my rent." },
 });
+// Server-side failures quote the id that is in the logs and on the response.
+const requestId = aiFailure.headers.get("x-request-id");
+assert.match(requestId, /^[a-f0-9]{16}$/);
+assert.equal(aiFailure.data.requestId, requestId);
+assert.ok(aiFailure.data.error.endsWith(`(reference ${requestId})`));
 assert.equal(
   (await call("/api/workspace", { cookie: a.cookie })).data.aiUsage,
   0,

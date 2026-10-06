@@ -3,6 +3,7 @@ import { HttpError } from "../lib/domain";
 import { emailConfigured } from "../lib/email";
 import type { Bindings } from "../lib/env";
 import type { SessionUser } from "../lib/types";
+import { logError } from "../lib/log";
 
 export const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), {
@@ -21,12 +22,7 @@ export async function readBody(request: Request): Promise<unknown> {
 /** Runs work after the response is sent; failures are logged, not shown. */
 export function later(ctx: APIContext, task: () => Promise<unknown>) {
   ctx.locals.cfContext.waitUntil(
-    task().catch((err) =>
-      console.error(
-        "Background task failed",
-        err instanceof Error ? err.message : "unknown",
-      ),
-    ),
+    task().catch((err) => logError(ctx, "Background task failed", err)),
   );
 }
 
@@ -83,31 +79,35 @@ export function userContext(base: RequestContext, user: SessionUser) {
 }
 
 /** Turns thrown errors into JSON responses, translating database constraint failures into plain words. */
-export function errorResponse(err: unknown) {
-  if (err instanceof HttpError) return json({ error: err.message }, err.status);
+export function errorResponse(err: unknown, ctx: APIContext) {
+  const id = ctx.locals.requestId;
+  // Server-side failures quote the request id, so a user's report can be matched to the log line.
+  const reply = (error: string, status: number) =>
+    json(
+      {
+        error: status >= 500 ? `${error} (reference ${id})` : error,
+        requestId: id,
+      },
+      status,
+    );
+  if (err instanceof HttpError) return reply(err.message, err.status);
   const message = String(err);
   if (message.includes("UNIQUE constraint"))
-    return json({ error: "This record already exists." }, 409);
+    return reply("This record already exists.", 409);
   if (message.includes("overlap an active lease"))
-    return json(
-      {
-        error:
-          "These dates overlap another active lease for this property. End or shorten that lease first.",
-      },
+    return reply(
+      "These dates overlap another active lease for this property. End or shorten that lease first.",
       409,
     );
   if (message.includes("Charge is voided"))
-    return json({ error: "This rent charge has been removed." }, 409);
+    return reply("This rent charge has been removed.", 409);
   if (message.includes("FOREIGN KEY"))
-    return json(
-      {
-        error:
-          "This record is linked to other records. Remove those links first.",
-      },
+    return reply(
+      "This record is linked to other records. Remove those links first.",
       409,
     );
   if (message.includes("Payment exceeds"))
-    return json({ error: "Payment exceeds the outstanding balance." }, 409);
-  console.error("API failure", err instanceof Error ? err.message : "unknown");
-  return json({ error: "Something went wrong. Please try again." }, 500);
+    return reply("Payment exceeds the outstanding balance.", 409);
+  logError(ctx, "API failure", err);
+  return reply("Something went wrong. Please try again.", 500);
 }

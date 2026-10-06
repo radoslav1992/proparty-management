@@ -68,6 +68,10 @@ For an existing, pinned D1 database, use `npm run db:remote && npx wrangler depl
 
 `wrangler.jsonc` registers a Cron Trigger (`17 3 * * *`, 03:17 UTC) handled by `src/worker.ts`. Each run creates the current month's rent charge for every active lease, ends leases whose last day has passed, and deletes expired sessions, rate-limit counters, reset and confirmation tokens, AI usage older than 30 days and Stripe event ids older than 30 days. It deploys with the Worker; nothing needs setting up in the dashboard. Check runs under the Worker's Settings → Trigger Events.
 
+### Logs
+
+Workers Logs are on (`observability` in `wrangler.jsonc`). Each failure is logged as one JSON line with `requestId` (the Cloudflare Ray ID), method, path and user id. API responses carry the same id in an `X-Request-Id` header, and server errors quote it to the user as "reference …", so a reported problem can be found in the logs. A failed daily job is logged with its cron and shows as failed under Trigger Events.
+
 CLI deployment: `npm run deploy`.
 
 ## 4. Variables and secrets

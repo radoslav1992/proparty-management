@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-// Starts the built Worker on its own port, runs one test file against it, then stops it.
-async function run(file, port, inspectorPort, vars = {}) {
+// Starts the built Worker on its own port, runs test files against it in order, then stops it.
+async function run(files, port, inspectorPort, vars = {}) {
   const worker = spawn(
     process.execPath,
     [
@@ -43,15 +43,20 @@ async function run(file, port, inspectorPort, vars = {}) {
         reject(new Error("Worker exited: " + code));
       });
     });
-    const status = await new Promise((resolve) => {
-      const test = spawn(process.execPath, [file], {
-        stdio: "inherit",
-        env: { ...process.env, TEST_BASE_URL: `http://127.0.0.1:${port}` },
+    for (const file of files) {
+      const status = await new Promise((resolve) => {
+        const test = spawn(process.execPath, [file], {
+          stdio: "inherit",
+          env: { ...process.env, TEST_BASE_URL: `http://127.0.0.1:${port}` },
+        });
+        test.on("exit", resolve);
       });
-      test.on("exit", resolve);
-    });
-    if (status !== 0) console.error(output.slice(-10000));
-    return status === 0;
+      if (status !== 0) {
+        console.error(output.slice(-10000));
+        return false;
+      }
+    }
+    return true;
   } catch (err) {
     console.error(err.message, output.slice(-7000));
     return false;
@@ -60,9 +65,9 @@ async function run(file, port, inspectorPort, vars = {}) {
   }
 }
 const results = [
-  await run("tests/integration.mjs", 8891, 9340),
+  await run(["tests/integration.mjs", "tests/smoke.mjs"], 8891, 9340),
   // A placeholder email provider turns on verification; sends fail in the background and are only logged.
-  await run("tests/integration-email.mjs", 8892, 9341, {
+  await run(["tests/integration-email.mjs"], 8892, 9341, {
     RESEND_API_KEY: "test-key",
     EMAIL_FROM: "Proparty <test@example.com>",
   }),

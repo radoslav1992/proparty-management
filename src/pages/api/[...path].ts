@@ -602,6 +602,8 @@ async function handle(ctx: APIContext) {
               ? "private, max-age=86400, immutable"
               : "private, no-store",
           "X-Content-Type-Options": "nosniff",
+          // Opened directly, an uploaded file can never run script or load anything.
+          "Content-Security-Policy": "default-src 'none'; sandbox",
         },
       });
     }

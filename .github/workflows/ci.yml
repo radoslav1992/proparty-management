@@ -20,4 +20,5 @@ jobs:
       - run: python3 tests/database.py
       - run: npm run build
       - run: npm run db:local
+      - run: npx playwright install --with-deps chromium
       - run: node tests/run-integration.mjs

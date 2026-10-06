@@ -1306,3 +1306,26 @@ td.wrap {
   gap: 10px;
   margin-top: 16px;
 }
+.chat-message.ai {
+  white-space: normal;
+}
+.chat-message.ai p {
+  white-space: pre-line;
+  margin: 0 0 10px;
+}
+.chat-message.ai :is(ul, ol) {
+  margin: 0 0 10px;
+  padding-left: 20px;
+}
+.chat-message.ai > :last-child {
+  margin-bottom: 0;
+}
+.chat-message.ai code {
+  font-size: 12px;
+  background: #f2f5ec;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.chat-message.error {
+  border-color: var(--danger);
+}

@@ -22,6 +22,21 @@ export const MAINTENANCE_STATUSES = [
   "resolved",
 ] as const;
 export const CURRENCIES = ["EUR", "USD", "GBP"] as const;
+/** Formats offered for dates and amounts, with each one's own name. */
+export const LOCALES = {
+  "en-GB": "English (UK)",
+  "en-US": "English (US)",
+  "bg-BG": "Български",
+  "de-DE": "Deutsch",
+  "el-GR": "Ελληνικά",
+  "es-ES": "Español",
+  "fr-FR": "Français",
+  "it-IT": "Italiano",
+  "nl-NL": "Nederlands",
+  "pl-PL": "Polski",
+  "ro-RO": "Română",
+} as const;
+export type Locale = keyof typeof LOCALES;
 
 export interface SessionUser {
   id: string;
@@ -33,6 +48,7 @@ export interface SessionUser {
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   email_verified_at: string | null;
+  locale?: string;
 }
 export interface Property {
   id: string;
@@ -108,6 +124,7 @@ export interface FileRecord {
   size: number;
   kind: "image" | "document";
   created_at?: string;
+  has_thumb?: number;
 }
 /** One row of the append-only history; `detail` is a JSON object whose keys depend on entity and action. */
 export interface AuditEntry {

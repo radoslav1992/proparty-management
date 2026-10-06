@@ -9,7 +9,7 @@ export function propertyCard(p: Property) {
   const photo = app.data.files.find(
     (f) => f.property_id === p.id && f.kind === "image",
   );
-  const image = photo ? "/api/files/" + photo.id : p.demo_image;
+  const image = photo ? `/api/files/${photo.id}?size=thumb` : p.demo_image;
   return html`<article class="property-card">
     <div class="property-image">
       ${

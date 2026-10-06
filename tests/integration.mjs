@@ -370,6 +370,77 @@ assert.deepEqual(
     .map((c) => c.month),
   ["2026-10"],
 );
+// Photos can carry a browser-made thumbnail; anything else sent as one is ignored.
+const photo = await readFile("public/images/ns-img-232.webp");
+const upload = async (thumb) => {
+  const form = new FormData();
+  form.set("property_id", p.id);
+  form.set("file", new Blob([photo], { type: "image/webp" }), "front.webp");
+  form.set("thumb", new Blob([thumb], { type: "image/webp" }), "thumb.webp");
+  return (
+    await call("/api/files", {
+      method: "POST",
+      cookie: a.cookie,
+      body: form,
+      status: 201,
+    })
+  ).data.id;
+};
+const withThumb = await upload(photo);
+const withoutThumb = await upload("<svg onload=alert(1)>");
+state = (await call("/api/workspace", { cookie: a.cookie })).data;
+const fileRow = (id) => state.files.find((f) => f.id === id);
+assert.equal(fileRow(withThumb).has_thumb, 1);
+assert.equal(fileRow(withoutThumb).has_thumb, 0);
+for (const id of [withThumb, withoutThumb]) {
+  const preview = await fetch(`${base}/api/files/${id}?size=thumb`, {
+    headers: { Cookie: a.cookie },
+  });
+  assert.equal(preview.status, 200);
+  assert.equal(preview.headers.get("content-type"), "image/webp");
+  await call("/api/files/" + id, { method: "DELETE", cookie: a.cookie });
+}
+// Dates and amounts follow the chosen format; only listed formats are accepted.
+await call("/api/settings", {
+  method: "PATCH",
+  cookie: a.cookie,
+  body: {
+    name: "Test manager A",
+    company: "",
+    currency: "EUR",
+    locale: "bg-BG",
+  },
+});
+assert.equal(
+  (await call("/api/workspace", { cookie: a.cookie })).data.user.locale,
+  "bg-BG",
+);
+await call("/api/settings", {
+  method: "PATCH",
+  cookie: a.cookie,
+  status: 400,
+  body: { name: "Test manager A", currency: "EUR", locale: "xx-XX" },
+});
+// Without Workers AI (local runs) the assistant fails cleanly and gives the request back.
+await call("/api/ai", {
+  method: "POST",
+  cookie: a.cookie,
+  status: 400,
+  body: {
+    prompt: "Hi",
+    history: Array(7).fill({ role: "user", content: "Earlier" }),
+  },
+});
+await call("/api/ai", {
+  method: "POST",
+  cookie: a.cookie,
+  status: 502,
+  body: { prompt: "Summarise my rent." },
+});
+assert.equal(
+  (await call("/api/workspace", { cookie: a.cookie })).data.aiUsage,
+  0,
+);
 // Paid-up history older than the window loads on request; unpaid charges always load.
 const oldLease = (
   await call("/api/leases", {

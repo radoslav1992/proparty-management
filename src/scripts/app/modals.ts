@@ -422,7 +422,7 @@ export function propertyDetail(id: string) {
           .map(
             (f) =>
               html`<a href="/api/files/${f.id}" target="_blank" rel="noopener"
-                ><img src="/api/files/${f.id}" alt=${f.name}
+                ><img src="/api/files/${f.id}?size=thumb" alt=${f.name}
               /></a>`,
           )}${
           demo && p.demo_image

@@ -8,6 +8,8 @@ import {
   leaseUpdateInput,
   maintenanceInput,
   registerInput,
+  settingsInput,
+  aiInput,
 } from "../src/server/schemas.ts";
 const property = {
   name: " Parkside ",
@@ -97,5 +99,32 @@ test("new maintenance issues default to open", () => {
       priority: "urgent",
     }).status,
     "open",
+  );
+});
+test("settings accept listed formats and default to UK English", () => {
+  const base = { name: "A", currency: "EUR" };
+  assert.equal(parse(settingsInput, base).locale, "en-GB");
+  assert.equal(
+    parse(settingsInput, { ...base, locale: "bg-BG" }).locale,
+    "bg-BG",
+  );
+  assert.throws(() => parse(settingsInput, { ...base, locale: "xx-XX" }));
+});
+test("assistant history is limited and checked", () => {
+  assert.deepEqual(parse(aiInput, { prompt: "Hi" }).history, []);
+  const turn = { role: "assistant", content: "Hello" };
+  assert.equal(
+    parse(aiInput, { prompt: "Hi", history: [turn] }).history.length,
+    1,
+  );
+  assert.throws(
+    () => parse(aiInput, { prompt: "Hi", history: Array(7).fill(turn) }),
+    /at most six/,
+  );
+  assert.throws(() =>
+    parse(aiInput, {
+      prompt: "Hi",
+      history: [{ role: "system", content: "x" }],
+    }),
   );
 });

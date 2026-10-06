@@ -3,7 +3,7 @@ import { addMonths } from "../../lib/dates";
 import { demoWorkspace } from "../../lib/demo";
 import type { Workspace } from "../../lib/types";
 import { app, demo, el, isView, VIEWS, type View } from "./state";
-import { btn, empty, toast } from "./ui";
+import { btn, empty, locale, toast } from "./ui";
 import {
   chargeForm,
   confirmAction,
@@ -28,10 +28,11 @@ import { maintenance } from "./views/maintenance";
 import { expenses } from "./views/expenses";
 import { documents } from "./views/documents";
 import { reports } from "./views/reports";
-import { assistant, usageLine } from "./views/assistant";
+import { assistant, chat, type ChatMessage } from "./views/assistant";
 import { settings } from "./views/settings";
 import { activity, activityView, loadActivity } from "./views/activity";
 import { api } from "./api";
+import { withThumbnail } from "./thumbnail";
 
 const views: Record<View, () => unknown> = {
   overview,
@@ -97,7 +98,7 @@ function updateChrome() {
     .slice(0, 1)
     .toUpperCase();
   document.querySelector("#today-label")!.textContent =
-    new Date().toLocaleDateString("en-GB", {
+    new Date().toLocaleDateString(locale(), {
       weekday: "short",
       day: "numeric",
       month: "short",
@@ -268,30 +269,87 @@ async function action(name: string, id: string, button: HTMLButtonElement) {
   }
 }
 
+/** Text pieces from a server-sent-events answer (Workers AI or OpenAI-style chunks). */
+async function* streamText(res: Response) {
+  const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    buffer += value.replace(/\r\n/g, "\n");
+    let end: number;
+    while ((end = buffer.indexOf("\n\n")) >= 0) {
+      const event = buffer.slice(0, end);
+      buffer = buffer.slice(end + 2);
+      for (const line of event.split("\n")) {
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (data === "[DONE]") return;
+        try {
+          const chunk = JSON.parse(data);
+          const piece = chunk.response ?? chunk.choices?.[0]?.delta?.content;
+          if (piece) yield String(piece);
+        } catch {
+          // A malformed event is skipped; the rest of the answer still arrives.
+        }
+      }
+    }
+  }
+}
+
 async function askAssistant(form: HTMLFormElement) {
   const input = form.querySelector("textarea")!;
   const prompt = input.value.trim();
   if (!prompt) return;
-  const chat = el.main.querySelector(".chat-messages")!;
-  const message = (cls: string, text: string) => {
-    const box = document.createElement("div");
-    box.className = "chat-message " + cls;
-    box.textContent = text;
-    chat.appendChild(box);
-    return box;
+  const history = chat
+    .filter((m) => !m.state)
+    .slice(-6)
+    .map(({ role, content }) => ({ role, content }));
+  const reply: ChatMessage = {
+    role: "assistant",
+    content: "",
+    state: "streaming",
   };
-  message("user", prompt);
+  chat.push({ role: "user", content: prompt }, reply);
   input.value = "";
-  const reply = message("ai", "Thinking through your workspace…");
+  render();
+  let painting = false;
   try {
-    reply.textContent = (await api("ai", "POST", { prompt })).answer;
+    const res = await fetch("/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, history }),
+    });
+    if (!res.ok) {
+      if (res.status === 401) location.href = "/login";
+      const error = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      throw new Error(error?.error || "The assistant could not answer.");
+    }
+    if (res.headers.get("content-type")?.includes("text/event-stream")) {
+      for await (const piece of streamText(res)) {
+        reply.content += piece;
+        // Repaint at most once a frame while the answer streams in.
+        if (!painting) {
+          painting = true;
+          requestAnimationFrame(() => {
+            painting = false;
+            render();
+          });
+        }
+      }
+    } else reply.content = ((await res.json()) as { answer: string }).answer;
+    if (!reply.content.trim())
+      throw new Error("The assistant returned an empty answer.");
+    delete reply.state;
     app.data.aiUsage++;
-    const usage = el.main.querySelector(".page-heading p");
-    if (usage) usage.textContent = usageLine();
   } catch (err) {
-    reply.textContent = (err as Error).message;
+    reply.state = "error";
+    reply.content = (err as Error).message;
   }
-  reply.scrollIntoView({
+  render();
+  el.main.querySelector(".chat-message:last-child")?.scrollIntoView({
     behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
       ? "auto"
       : "smooth",
@@ -322,7 +380,7 @@ async function submit(form: HTMLFormElement) {
   await api(
     type + (id ? "/" + id : ""),
     id ? "PATCH" : "POST",
-    type === "files" ? new FormData(form) : values,
+    type === "files" ? await withThumbnail(new FormData(form)) : values,
   );
   el.dialog.close();
   toast(

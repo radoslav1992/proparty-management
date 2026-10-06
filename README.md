@@ -10,9 +10,10 @@ An Astro property-management SaaS for independent landlords and small rental por
 - Properties, tenant directory, leases (editable, with advance bookings) and monthly rent charges created daily.
 - Partial payments, overdue list across months, printable tenant statements, payment reversals and expense tracking.
 - Maintenance board with priority, assignment and status.
-- Private property images and PDF documents in R2.
-- Dashboard, monthly cash-flow reports and CSV export.
-- Cloudflare Workers AI assistant with account-scoped context and daily quotas.
+- Private property images (with browser-made thumbnails) and PDF documents in R2.
+- Dashboard, monthly cash-flow reports, CSV export and an activity history of every payment, charge and lease change.
+- Cloudflare Workers AI assistant with account-scoped context, streamed Markdown answers, follow-up questions and daily quotas.
+- Self-service data export (JSON) and account deletion; dates and amounts in the user's chosen format.
 - Optional Stripe subscriptions and signed webhooks.
 
 ## Start
@@ -45,10 +46,10 @@ npm run build
 ## Structure
 
 - `src/pages/index.astro`: landing page
-- `src/components/Workspace.astro`, `src/scripts/workspace.ts`: application UI
-- `src/pages/api/[...path].ts`: authenticated API
+- `src/components/Workspace.astro`, `src/scripts/app`: application UI (lit-html templates, one module per view)
+- `src/pages/api/[...path].ts` → `src/server`: API router, request schemas and one module per area in `src/server/routes`
 - `src/worker.ts`, `src/lib/jobs.ts`: Worker entry and the daily Cron Trigger job
-- `src/lib`: auth, validation, billing and Cloudflare bindings
+- `src/lib`: auth, validation, billing, shared types, dates, Markdown and Cloudflare bindings
 - `migrations`: D1 schema and financial invariants
 - `public/images`, `public/vendor`: selected template assets and animation libraries
 

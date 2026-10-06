@@ -141,6 +141,20 @@ try {
   );
   await save();
   await seen(".file-card img");
+  // The browser made a thumbnail, the server kept it, and the card shows it.
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll(".file-card img")].some(
+      (img) =>
+        img.src.includes("size=thumb") && img.complete && img.naturalWidth > 0,
+    ),
+  );
+  assert.equal(
+    await page.evaluate(
+      async () =>
+        (await (await fetch("/api/workspace")).json()).files[0].has_thumb,
+    ),
+    1,
+  );
 
   await go("leases");
   await act("edit-leases");
@@ -155,8 +169,26 @@ try {
   await seen("td:has-text('Payment reversed')");
   await go("reports");
   await seen("td strong:text('Smoke Flat')");
+  // Workers AI can't run locally, so a canned event stream stands in for it.
+  await page.route("**/api/ai", (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+      body:
+        'data: {"response":"**Two** tenants"}\n\n' +
+        'data: {"response":" owe rent:\\n- Elena"}\n\n' +
+        "data: [DONE]\n\n",
+    }),
+  );
   await go("assistant");
-  await seen("#ai-form");
+  await page.fill("#ai-form textarea", "Who owes rent?");
+  await page.click("#ai-form button[type=submit]");
+  await seen(".chat-message.ai strong:text('Two')");
+  await seen(".chat-message.ai li:text('Elena')");
+  await go("reports");
+  await go("assistant");
+  await seen(".chat-message.user:text('Who owes rent?')");
+  await page.unroute("**/api/ai");
 
   await go("settings");
   await page.fill("#settings-form [name=company]", "Smoke Rentals");

@@ -71,7 +71,7 @@ export const accountRoutes = [
         const window = WINDOWED[t as keyof typeof WINDOWED];
         return c.db
           .prepare(
-            `SELECT ${t === "files" ? "id,property_id,name,mime,size,kind,created_at" : "*"} FROM ${t} WHERE user_id=?${window ? " AND " + window : ""}`,
+            `SELECT ${t === "files" ? "id,property_id,name,mime,size,kind,created_at,has_thumb" : "*"} FROM ${t} WHERE user_id=?${window ? " AND " + window : ""}`,
           )
           .bind(c.userId, ...(window ? [since + "-01"] : []));
       }),
@@ -133,8 +133,10 @@ export const accountRoutes = [
         );
     }
     await c.db
-      .prepare("UPDATE users SET name=?,company=?,currency=? WHERE id=?")
-      .bind(input.name, input.company, input.currency, c.userId)
+      .prepare(
+        "UPDATE users SET name=?,company=?,currency=?,locale=? WHERE id=?",
+      )
+      .bind(input.name, input.company, input.currency, input.locale, c.userId)
       .run();
     return json({ ok: true });
   }),

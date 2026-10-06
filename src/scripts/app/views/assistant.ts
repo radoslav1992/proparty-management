@@ -1,6 +1,14 @@
 import { html } from "lit-html";
 import { app } from "../state";
-import { arrow, heading } from "../ui";
+import { arrow, heading, markdown } from "../ui";
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  state?: "streaming" | "error";
+}
+/** The conversation lasts until the page reloads, so moving between views keeps it. */
+export const chat: ChatMessage[] = [];
 
 const PROMPTS = [
   "Summarise my outstanding rent.",
@@ -10,6 +18,22 @@ const PROMPTS = [
 ];
 export const usageLine = () =>
   `${app.data.aiUsage} of ${app.data.limits.ai} requests used today. Your allowance resets at midnight UTC.`;
+
+const message = (m: ChatMessage) =>
+  m.role === "user"
+    ? html`<div class="chat-message user">${m.content}</div>`
+    : html`<div
+        class="chat-message ai ${m.state === "error" ? "error" : ""}"
+        aria-busy=${m.state === "streaming" ? "true" : "false"}
+      >
+        ${
+          m.state === "error"
+            ? m.content
+            : m.content
+              ? markdown(m.content)
+              : "Thinking through your workspace…"
+        }
+      </div>`;
 
 export function assistant() {
   return html`${heading("A helpful second pair of eyes.", usageLine())}
@@ -27,7 +51,7 @@ export function assistant() {
           (p) => html`<button data-prompt=${p}>${p} ${arrow}</button>`,
         )}
       </div>
-      <div class="chat-messages" aria-live="polite"></div>
+      <div class="chat-messages" aria-live="polite">${chat.map(message)}</div>
       <form class="chat-form" id="ai-form">
         <textarea
           name="prompt"
@@ -40,7 +64,7 @@ export function assistant() {
       </form>
       <p class="assistant-note">
         AI can make mistakes. Review every draft. It cannot change records or
-        send messages.
+        send messages. Follow-up questions see the last few messages.
       </p>
     </div>`;
 }

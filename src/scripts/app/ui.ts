@@ -1,19 +1,23 @@
 // Template helpers. lit-html escapes every interpolated value, so text from the database is never parsed as HTML.
 import { html, nothing } from "lit-html";
 import { ifDefined } from "lit-html/directives/if-defined.js";
-import { monthLabel } from "../../lib/dates";
+import { monthLabel as formatMonth } from "../../lib/dates";
+import { parseMarkdown, type Inline } from "../../lib/markdown";
 import { app } from "./state";
 
-export { monthLabel };
+/** The user's chosen format for dates and amounts. */
+export const locale = () => app.data?.user?.locale || "en-GB";
+export const monthLabel = (m: string, options: Intl.DateTimeFormatOptions) =>
+  formatMonth(m, options, locale());
 export const cash = (cents: number) =>
-  new Intl.NumberFormat("en-IE", {
+  new Intl.NumberFormat(locale(), {
     style: "currency",
     currency: app.data?.user?.currency || "EUR",
     maximumFractionDigits: 2,
   }).format((cents || 0) / 100);
 export const dateLabel = (d: string | undefined) =>
   d
-    ? new Date(d.slice(0, 10) + "T12:00:00Z").toLocaleDateString("en-GB", {
+    ? new Date(d.slice(0, 10) + "T12:00:00Z").toLocaleDateString(locale(), {
         day: "numeric",
         month: "short",
         year: "numeric",
@@ -161,3 +165,30 @@ export function toast(message: string) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => (box.style.display = "none"), 5000);
 }
+
+const inlines = (parts: Inline[]) =>
+  parts.map((p) =>
+    p.bold
+      ? html`<strong>${p.text}</strong>`
+      : p.italic
+        ? html`<em>${p.text}</em>`
+        : p.code
+          ? html`<code>${p.text}</code>`
+          : p.text,
+  );
+/** Assistant answers as escaped elements: only the Markdown subset in lib/markdown is recognised. */
+export const markdown = (source: string) =>
+  parseMarkdown(source).map((b) => {
+    if ("inlines" in b)
+      return b.type === "h"
+        ? html`<p><strong>${inlines(b.inlines)}</strong></p>`
+        : html`<p>${inlines(b.inlines)}</p>`;
+    const items = b.items.map((item) => html`<li>${inlines(item)}</li>`);
+    return b.type === "ul"
+      ? html`<ul>
+          ${items}
+        </ul>`
+      : html`<ol>
+          ${items}
+        </ol>`;
+  });

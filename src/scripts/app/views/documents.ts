@@ -18,7 +18,7 @@ export function documents() {
                 ${
                   f.kind === "image"
                     ? html`<img
-                        src="/api/files/${f.id}"
+                        src="/api/files/${f.id}?size=thumb"
                         alt=${f.name}
                         loading="lazy"
                       />`

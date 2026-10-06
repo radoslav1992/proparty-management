@@ -20,3 +20,10 @@ test("months move across year boundaries", () => {
   assert.equal(addMonths("2026-02", -5), "2025-09");
   assert.equal(addMonths("2026-12", 1), "2027-01");
 });
+test("month labels follow the chosen locale", () => {
+  assert.equal(
+    monthLabel("2026-10", { month: "long", year: "numeric" }, "de-DE"),
+    "Oktober 2026",
+  );
+  assert.equal(monthLabel("2026-10", { month: "short" }, "bg-BG"), "окт.");
+});

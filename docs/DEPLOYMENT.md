@@ -34,7 +34,7 @@ Run these commands in a terminal from the repository root. Authenticate with `np
 
 Run `npm run db:remote` again whenever a release adds a numbered migration (for example `0002_indexes.sql`). Wrangler applies only the migrations not yet recorded in the database. Never edit a migration that has already been applied; add a new numbered file instead.
 
-**Apply `0003_leases_charges_verification.sql` before deploying the code that ships with it.** That code reads the new `email_verified_at` and `voided` columns; deployed first, every signed-in request fails until the migration runs. The safest setup is the combined deploy command in step 3.
+**Apply new migrations before deploying the code that ships with them.** From `0003` on, the code reads columns those migrations add (`email_verified_at`, `voided`, `locale`, `has_thumb`, `updated_at`); deployed first, signed-in requests fail until the migrations run. Every migration is additive, so running them ahead of the code is safe. The safest setup is the combined deploy command in step 3.
 
 ### Recovering from an incomplete console import
 
@@ -129,14 +129,16 @@ Run `npm run test:integration` for the complete local suite. Its runner starts t
 - Configure and verify email (`RESEND_API_KEY`, `EMAIL_FROM`). Without it, password recovery shows a clear unavailable message and email confirmation is skipped. With it, new accounts must confirm their address before using the AI assistant or uploads; accounts created before migration `0003` are treated as confirmed.
 - Replace the privacy/terms overview with the operator's actual identity, contact and retention policy before commercial launch.
 - Verify Stripe with test mode first if enabling subscriptions.
-- Keep important property documents backed up independently. Establish a data-retention and account-deletion process.
+- Keep important property documents backed up independently. Users can download their data and delete their account from Settings; decide how long backups of deleted accounts are kept and say so in the privacy policy.
 
 ## Product boundaries
 
 Rent payments are entered manually; this release does not collect tenant payments or connect to banks. The daily job creates the current month's charge for each active lease; other months are generated from the rent ledger. Generation is idempotent per lease/month. First/last partial months use the full monthly rent (no automatic prorating), and due dates are moved inside the lease's start and end dates. Due days are 1–28. Unpaid charges can be edited or removed (removed charges are kept as voided and never regenerated). Leases can be edited and ended on a chosen date; ending early deletes later unpaid charges. A property can hold several active leases as long as their dates do not overlap, so the next tenant can be entered in advance.
 
-The assistant uses a bounded account-only snapshot of properties, recent charges and open maintenance. It does not receive uploaded documents, perform writes, send messages, or supply legal/tax advice. AI costs are limited by daily atomic D1 quotas; failed inference refunds the quota.
+The assistant uses a bounded account-only snapshot of properties, recent charges and open maintenance, plus the last six messages of the conversation. Answers stream to the browser and are shown as a small, escaped Markdown subset. It does not receive uploaded documents, perform writes, send messages, or supply legal/tax advice. AI costs are limited by daily atomic D1 quotas; a request that fails before the answer starts refunds the quota.
 
-The demo is read-only and separate from real account data. New accounts start empty. R2 files are limited to JPEG/PNG/WebP/PDF, 10 MB each, 30 per property.
+The workspace loads the last 24 months of payments, charges and expenses plus every unpaid charge, and fetches older months when a user picks them; tenant statements always use the full history. Payments, charges and leases are recorded in an append-only `audit_log` (shown under Activity, included in the data export).
+
+The demo is read-only and separate from real account data. New accounts start empty. R2 files are limited to JPEG/PNG/WebP/PDF, 10 MB each, 30 per property. Photos get a thumbnail made in the browser (at most 640 px wide, without camera metadata) stored beside the original as `<key>.thumb`; originals are kept unchanged. Interface text is English; the date and number format is a per-user setting.
 
 Scheduled outbound reminders, tenant login portals, team invitations, OCR, automated rent collection, and bank feeds are not implemented or advertised as active features.

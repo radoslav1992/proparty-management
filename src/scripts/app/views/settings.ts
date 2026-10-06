@@ -1,5 +1,5 @@
 import { html, nothing } from "lit-html";
-import { CURRENCIES } from "../../../lib/types";
+import { CURRENCIES, LOCALES } from "../../../lib/types";
 import { app, demo } from "../state";
 import { arrow, btn, field, heading, select } from "../ui";
 
@@ -36,7 +36,12 @@ export function settings() {
           )}<small
             >Currency can only change before you add your first property.
             Existing values are never converted.</small
-          >
+          >${select(
+            "Date and number format",
+            "locale",
+            Object.entries(LOCALES),
+            d.user.locale || "en-GB",
+          )}
           <div class="form-message" role="alert"></div>
           <button class="button" type="submit">Save changes</button>
         </form>

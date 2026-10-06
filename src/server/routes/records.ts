@@ -114,7 +114,9 @@ export const recordRoutes = [
         .bind(id, c.userId),
     ]);
     if (files.results.length)
-      await c.env.PROPERTY_FILES.delete(files.results.map((f) => f.key));
+      await c.env.PROPERTY_FILES.delete(
+        files.results.flatMap((f) => [f.key, f.key + ".thumb"]),
+      );
     return json({ ok: true });
   }),
 

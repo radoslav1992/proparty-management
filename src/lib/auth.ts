@@ -34,7 +34,7 @@ export async function sessionUser(cookie: string | undefined) {
   if (!cookie || !/^[a-f0-9]{64}$/.test(cookie)) return null;
   return bindings()
     .DB.prepare(
-      "SELECT u.id,u.name,u.email,u.company,u.currency,u.plan,u.stripe_customer_id,u.stripe_subscription_id,u.email_verified_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?",
+      "SELECT u.id,u.name,u.email,u.company,u.currency,u.plan,u.stripe_customer_id,u.stripe_subscription_id,u.email_verified_at,u.locale FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?",
     )
     .bind(await digest(cookie), Math.floor(Date.now() / 1000))
     .first<App.Locals["user"]>();

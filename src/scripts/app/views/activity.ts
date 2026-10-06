@@ -2,7 +2,16 @@ import { html, nothing } from "lit-html";
 import type { AuditEntry } from "../../../lib/types";
 import { api } from "../api";
 import { demo } from "../state";
-import { btn, cash, dateLabel, empty, heading, monthLabel, table } from "../ui";
+import {
+  btn,
+  cash,
+  dateLabel,
+  empty,
+  heading,
+  locale,
+  monthLabel,
+  table,
+} from "../ui";
 
 /** Loaded when the view opens; cleared whenever workspace data reloads. */
 export const activity = {
@@ -29,7 +38,7 @@ export async function loadActivity(rerender: () => void, older = false) {
 }
 
 const when = (at: string) =>
-  new Date(at.replace(" ", "T") + "Z").toLocaleString("en-GB", {
+  new Date(at.replace(" ", "T") + "Z").toLocaleString(locale(), {
     day: "numeric",
     month: "short",
     year: "numeric",

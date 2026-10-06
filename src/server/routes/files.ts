@@ -4,7 +4,8 @@ import { json } from "../http";
 import { del, get, post } from "../router";
 import { parse, recordId } from "../schemas";
 
-const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_BYTES = 10 * 1024 * 1024,
+  MAX_THUMB_BYTES = 512 * 1024;
 const ascii = (bytes: Uint8Array, from: number, to: number) =>
   String.fromCharCode(...bytes.slice(from, to));
 /** The file's real type from its first bytes; the browser's claimed type is ignored. */
@@ -19,13 +20,19 @@ function sniff(bytes: Uint8Array) {
 }
 
 export const fileRoutes = [
+  // ?size=thumb serves the small preview when one was stored, otherwise the original.
   get("files/:id", async (c, { id }) => {
     const f = await c.owned<FileRecord & { key: string }>("files", id);
-    const obj = await c.env.PROPERTY_FILES.get(f.key);
+    const thumb = c.url.searchParams.get("size") === "thumb" && f.has_thumb;
+    const obj = await c.env.PROPERTY_FILES.get(
+      thumb ? f.key + ".thumb" : f.key,
+    );
     if (!obj) throw new HttpError(404, "File not found.");
     return new Response(obj.body, {
       headers: {
-        "Content-Type": f.mime,
+        "Content-Type": thumb
+          ? obj.httpMetadata?.contentType || "image/webp"
+          : f.mime,
         "Content-Disposition": `${f.kind === "image" ? "inline" : "attachment"}; filename="${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}"`,
         // File IDs never change content, so images can stay in the browser cache.
         "Cache-Control":
@@ -44,7 +51,7 @@ export const fileRoutes = [
       .prepare("DELETE FROM files WHERE id=? AND user_id=?")
       .bind(id, c.userId)
       .run();
-    await c.env.PROPERTY_FILES.delete(f.key);
+    await c.env.PROPERTY_FILES.delete([f.key, f.key + ".thumb"]);
     return json({ ok: true });
   }),
   post("files", async (c) => {
@@ -72,15 +79,33 @@ export const fileRoutes = [
       .first<{ n: number }>();
     if ((count?.n || 0) >= 30)
       throw new HttpError(400, "This property has reached the 30-file limit.");
+    // The browser makes the thumbnail; it is checked like any upload and dropped if it is not a small image.
+    const thumbFile = form.get("thumb");
+    let thumb: { bytes: Uint8Array; mime: string } | undefined;
+    if (
+      mime.startsWith("image/") &&
+      thumbFile instanceof File &&
+      thumbFile.size > 0 &&
+      thumbFile.size <= MAX_THUMB_BYTES
+    ) {
+      const thumbBytes = new Uint8Array(await thumbFile.arrayBuffer());
+      const thumbMime = sniff(thumbBytes);
+      if (thumbMime === "image/webp" || thumbMime === "image/jpeg")
+        thumb = { bytes: thumbBytes, mime: thumbMime };
+    }
     const fileId = uid(),
       key = `${c.userId}/${p.id}/${fileId}`;
     await c.env.PROPERTY_FILES.put(key, bytes, {
       httpMetadata: { contentType: mime },
     });
+    if (thumb)
+      await c.env.PROPERTY_FILES.put(key + ".thumb", thumb.bytes, {
+        httpMetadata: { contentType: thumb.mime },
+      });
     try {
       await c.db
         .prepare(
-          "INSERT INTO files(id,user_id,property_id,key,name,mime,size,kind) VALUES(?,?,?,?,?,?,?,?)",
+          "INSERT INTO files(id,user_id,property_id,key,name,mime,size,kind,has_thumb) VALUES(?,?,?,?,?,?,?,?,?)",
         )
         .bind(
           fileId,
@@ -91,10 +116,11 @@ export const fileRoutes = [
           mime,
           file.size,
           mime.startsWith("image/") ? "image" : "document",
+          thumb ? 1 : 0,
         )
         .run();
     } catch (err) {
-      await c.env.PROPERTY_FILES.delete(key);
+      await c.env.PROPERTY_FILES.delete([key, key + ".thumb"]);
       throw err;
     }
     return json({ id: fileId }, 201);

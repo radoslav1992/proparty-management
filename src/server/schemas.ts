@@ -16,6 +16,8 @@ import {
   PRIORITIES,
   MAINTENANCE_STATUSES,
   CURRENCIES,
+  LOCALES,
+  type Locale,
 } from "../lib/types.ts";
 
 // default(undefined) makes Zod 4 run the check for a missing key too, so required fields keep their own messages.
@@ -93,12 +95,25 @@ export const settingsInput = z.object({
   name: required("Name", 100),
   company: optional("Company", 150),
   currency: oneOf(CURRENCIES),
+  locale: oneOf(Object.keys(LOCALES) as Locale[], "en-GB"),
 });
 export const checkoutInput = z.object({
   plan: oneOf(["landlord", "portfolio"] as const),
 });
 export const monthInput = z.object({ month: check(month) });
-export const aiInput = z.object({ prompt: required("Question", 2000) });
+export const aiInput = z.object({
+  prompt: required("Question", 2000),
+  // The last few turns of the conversation, so follow-up questions make sense.
+  history: check((v) => {
+    if (v == null) return [];
+    if (!Array.isArray(v) || v.length > 6)
+      throw new HttpError(400, "Send at most six earlier messages.");
+    return v.map((m) => ({
+      role: choice(m?.role, ["user", "assistant"]) as "user" | "assistant",
+      content: text(m?.content, "Message", 4000),
+    }));
+  }),
+});
 
 export const propertyInput = z
   .object({

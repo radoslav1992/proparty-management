@@ -65,6 +65,24 @@ const duplicate = await call("/api/auth/register", {
 assert.match(duplicate.data.error, /account with this email already exists/);
 await call("/api/workspace", { status: 401 });
 await call("/app", { status: 302 });
+// Signing in returns to the workspace view that was asked for, and only to the workspace.
+const location = async (path, cookie) =>
+  (await call(path, { cookie, status: 302 })).headers.get("location");
+assert.equal(
+  await location("/app?view=rent"),
+  "/login?next=%2Fapp%3Fview%3Drent",
+);
+assert.equal(await location("/login", a.cookie), "/app");
+assert.equal(await location("/signup", a.cookie), "/app");
+assert.equal(
+  await location("/login?next=%2Fapp%3Fview%3Drent", a.cookie),
+  "/app?view=rent",
+);
+for (const next of ["https://evil.example", "//evil.example", "/api/workspace"])
+  assert.equal(
+    await location("/login?next=" + encodeURIComponent(next), a.cookie),
+    "/app",
+  );
 const p = (
   await call("/api/properties", {
     method: "POST",
@@ -254,6 +272,19 @@ await call("/api/files", {
   body: bad,
   status: 400,
 });
+// A streamed upload with no declared size is refused before its body is read.
+const encoded = new Request("http://x", { method: "POST", body: form });
+const streamed = await fetch(base + "/api/files", {
+  method: "POST",
+  duplex: "half",
+  headers: {
+    Origin: base,
+    Cookie: a.cookie,
+    "Content-Type": encoded.headers.get("content-type"),
+  },
+  body: encoded.body,
+});
+assert.equal(streamed.status, 411);
 const csv = (await call("/api/reports?month=2026-10", { cookie: a.cookie }))
   .data;
 assert.ok(csv.includes("'=Formula test"));
@@ -431,12 +462,17 @@ await call("/api/ai", {
     history: Array(7).fill({ role: "user", content: "Earlier" }),
   },
 });
-await call("/api/ai", {
+const aiFailure = await call("/api/ai", {
   method: "POST",
   cookie: a.cookie,
   status: 502,
   body: { prompt: "Summarise my rent." },
 });
+// Server-side failures quote the id that is in the logs and on the response.
+const requestId = aiFailure.headers.get("x-request-id");
+assert.match(requestId, /^[a-f0-9]{16}$/);
+assert.equal(aiFailure.data.requestId, requestId);
+assert.ok(aiFailure.data.error.endsWith(`(reference ${requestId})`));
 assert.equal(
   (await call("/api/workspace", { cookie: a.cookie })).data.aiUsage,
   0,
@@ -486,6 +522,144 @@ const statement = (
 assert.ok(statement.charges.some((c) => c.month === "2023-01"));
 assert.ok(statement.payments.some((p) => p.paid_date === "2023-01-05"));
 await call(`/api/tenants/${t.id}/statement`, { cookie: b.cookie, status: 404 });
+// A property's history covers every month, however old, with the last payment date.
+const propertyHistory = (
+  await call(`/api/properties/${nextLease.property_id}/history`, {
+    cookie: a.cookie,
+  })
+).data;
+const oldEntry = propertyHistory.charges.find((c) => c.id === unpaid.id);
+assert.equal(oldEntry.last_paid, "2023-01-05");
+assert.equal(oldEntry.tenant, "Test tenant");
+assert.ok(propertyHistory.charges.every((c) => !c.voided));
+assert.equal(typeof propertyHistory.expenses.total_cents, "number");
+await call(`/api/properties/${nextLease.property_id}/history`, {
+  cookie: b.cookie,
+  status: 404,
+});
+// Proration charges partial months by days covered and follows the lease's dates.
+const prorated = (
+  await call("/api/leases", {
+    method: "POST",
+    cookie: a.cookie,
+    status: 201,
+    body: {
+      property_id: p.id,
+      tenant_id: t.id,
+      start_date: "2025-04-16",
+      end_date: "2025-06-10",
+      rent: "900",
+      deposit: "1000",
+      due_day: 1,
+      prorate: "1",
+    },
+  })
+).data;
+for (const month of ["2025-04", "2025-05", "2025-06"])
+  await call("/api/charges/generate", {
+    method: "POST",
+    cookie: a.cookie,
+    body: { month },
+  });
+const leaseCharges = async (leaseId) =>
+  (
+    await call("/api/workspace?only=charges&since=2025-01", {
+      cookie: a.cookie,
+    })
+  ).data.charges
+    .filter((c) => c.lease_id === leaseId && !c.voided)
+    .map((c) => [c.month, c.amount_cents])
+    .sort((x, y) => x[0].localeCompare(y[0]));
+assert.deepEqual(await leaseCharges(prorated.id), [
+  ["2025-04", 45000],
+  ["2025-05", 90000],
+  ["2025-06", 30000],
+]);
+const editLease = (body, status = 200) =>
+  call(`/api/leases/${prorated.id}`, {
+    method: "PATCH",
+    cookie: a.cookie,
+    status,
+    body,
+  });
+await editLease({ status: "ended", end_date: "2025-05-15", prorate: "1" });
+assert.deepEqual(await leaseCharges(prorated.id), [
+  ["2025-04", 45000],
+  ["2025-05", 43548],
+]);
+await editLease({ prorate: "0" });
+assert.deepEqual(await leaseCharges(prorated.id), [
+  ["2025-04", 90000],
+  ["2025-05", 90000],
+]);
+await editLease({ prorate: "1" });
+assert.deepEqual(await leaseCharges(prorated.id), [
+  ["2025-04", 45000],
+  ["2025-05", 43548],
+]);
+// The deposit's receipt and return are recorded and checked.
+const deposit = (leaseId, body, status = 200) =>
+  call(`/api/leases/${leaseId}/deposit`, {
+    method: "PATCH",
+    cookie: a.cookie,
+    status,
+    body,
+  });
+await deposit(
+  prorated.id,
+  { received_on: "", returned: "100", returned_on: "2025-05-20" },
+  400,
+);
+await deposit(
+  prorated.id,
+  { received_on: "2025-04-16", returned: "1000.01", returned_on: "2025-05-20" },
+  400,
+);
+await deposit(
+  prorated.id,
+  { received_on: "2025-04-16", returned: "100", returned_on: "" },
+  400,
+);
+await deposit(prorated.id, {
+  received_on: "2025-04-16",
+  returned: "",
+  returned_on: "",
+});
+// A renewal starts the next day, keeps proration and takes the deposit with it.
+const renew = (body, status = 201) =>
+  call(`/api/leases/${prorated.id}/renew`, {
+    method: "POST",
+    cookie: a.cookie,
+    status,
+    body,
+  });
+await renew({ end_date: "2025-05-15", rent: "950" }, 400);
+const renewal = (await renew({ end_date: "2025-08-31", rent: "950" })).data;
+await renew({ end_date: "2025-09-30", rent: "950" }, 409);
+await call("/api/charges/generate", {
+  method: "POST",
+  cookie: a.cookie,
+  body: { month: "2025-05" },
+});
+assert.deepEqual(await leaseCharges(renewal.id), [["2025-05", 49032]]);
+const renewed = (
+  await call("/api/workspace", { cookie: a.cookie })
+).data.leases.find((l) => l.id === renewal.id);
+assert.equal(renewed.start_date, "2025-05-16");
+assert.equal(renewed.renewed_from, prorated.id);
+assert.equal(renewed.deposit_cents, 100000);
+assert.equal(renewed.deposit_received_on, "2025-04-16");
+assert.equal(renewed.prorate, 1);
+await deposit(
+  prorated.id,
+  { received_on: "2025-04-16", returned: "800", returned_on: "2025-09-05" },
+  400,
+);
+await deposit(renewal.id, {
+  received_on: "2025-04-16",
+  returned: "800",
+  returned_on: "2025-09-05",
+});
 // Money and lease changes are kept in an account's own history.
 const history = (await call("/api/activity", { cookie: a.cookie })).data;
 const kinds = history.entries.map((e) => e.entity + ":" + e.action);
@@ -496,8 +670,14 @@ for (const kind of [
   "charge:voided",
   "lease:changed",
   "lease:ended",
+  "lease:deposit",
 ])
   assert.ok(kinds.includes(kind), kind);
+assert.ok(
+  history.entries.some(
+    (e) => e.entity_id === renewal.id && JSON.parse(e.detail).renewal === 1,
+  ),
+);
 assert.equal(
   (await call("/api/activity", { cookie: b.cookie })).data.entries.length,
   0,
@@ -656,6 +836,8 @@ const second = await call("/api/auth/login", {
   method: "POST",
   body: credentials,
 });
+// A new session lasts seven days from its last use.
+assert.match(second.headers.get("set-cookie"), /Max-Age=604800/);
 await call("/api/account/password", {
   method: "POST",
   cookie: a.cookie,
@@ -724,6 +906,19 @@ for (const path of [
   "/verify-email",
 ])
   await call(path);
+// Unknown pages answer 404 at their own address.
+assert.match(
+  (await call("/no-such-page", { status: 404 })).data,
+  /This room is empty/,
+);
+const landing = (await call("/")).data;
+assert.ok(landing.includes(`<link rel="canonical" href="${base}/">`));
+assert.ok(
+  landing.includes(
+    `<meta property="og:image" content="${base}/images/ns-img-223.webp">`,
+  ),
+);
+assert.ok(!(await call("/login")).data.includes("og:title"));
 console.log(
   "PASS: registration, protected routes, two-account isolation, leases and overlap rules, charge generation, editing and voiding, partial payment, overpayment guard, reversal, maintenance, expenses, CSRF, R2 upload/ownership/delete, file signature checks, CSV injection safety, currency guard, lease editing and ending, daily job, password change, session sign-out, logout and public pages.",
 );

@@ -1,4 +1,5 @@
 import { HttpError, planFor, today } from "../../lib/domain";
+import { logError } from "../../lib/log";
 import { json, readBody } from "../http";
 import { post } from "../router";
 import { aiInput, parse } from "../schemas";
@@ -75,10 +76,7 @@ export const aiRoutes = [
         )
         .bind(c.userId, day)
         .run();
-      console.error(
-        "Workers AI request failed",
-        err instanceof Error ? err.message : "unknown",
-      );
+      logError(c.ctx, "Workers AI request failed", err);
       throw new HttpError(
         502,
         "The AI service is unavailable. Your allowance has not been consumed.",

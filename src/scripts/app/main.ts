@@ -1,6 +1,5 @@
 import { html, nothing, render as paint } from "lit-html";
 import { addMonths } from "../../lib/dates";
-import { demoWorkspace } from "../../lib/demo";
 import type { Workspace } from "../../lib/types";
 import { app, demo, el, isView, VIEWS, type View } from "./state";
 import { btn, empty, locale, toast } from "./ui";
@@ -8,6 +7,8 @@ import {
   chargeForm,
   confirmAction,
   deleteAccountForm,
+  depositForm,
+  editorChanged,
   endLeaseForm,
   expenseForm,
   fileForm,
@@ -16,6 +17,7 @@ import {
   paymentForm,
   propertyDetail,
   propertyForm,
+  renewLeaseForm,
   tenantForm,
   tenantStatement,
 } from "./modals";
@@ -31,7 +33,7 @@ import { reports } from "./views/reports";
 import { assistant, chat, type ChatMessage } from "./views/assistant";
 import { settings } from "./views/settings";
 import { activity, activityView, loadActivity } from "./views/activity";
-import { api } from "./api";
+import { api, signIn } from "./api";
 import { withThumbnail } from "./thumbnail";
 
 const views: Record<View, () => unknown> = {
@@ -117,7 +119,8 @@ async function load() {
     const since = app.data?.windowStart;
     app.data = (
       demo
-        ? demoWorkspace()
+        ? // Sample data is only fetched by the demo, not shipped to signed-in users.
+          (await import("../../lib/demo")).demoWorkspace()
         : await api("workspace" + (since ? "?since=" + since : ""))
     ) as Workspace;
     merge({ charges: app.data.charges });
@@ -195,7 +198,7 @@ const DELETE_TEXT: Record<string, [string, string]> = {
 
 async function action(name: string, id: string, button: HTMLButtonElement) {
   // Actions that only open or close something work in the demo too.
-  if (name === "close") return el.dialog.close();
+  if (name === "close") return closeEditor();
   if (name === "reload") return load();
   if (name === "property-detail") return propertyDetail(id);
   if (name === "tenant-statement") return tenantStatement(id);
@@ -232,6 +235,8 @@ async function action(name: string, id: string, button: HTMLButtonElement) {
     return confirmAction(title, text, "confirmed-delete-" + type, id);
   }
   if (name === "end-lease") return endLeaseForm(id);
+  if (name === "renew-lease") return renewLeaseForm(id);
+  if (name === "lease-deposit") return depositForm(id);
   button.disabled = true;
   try {
     if (name.startsWith("confirmed-delete-")) {
@@ -321,7 +326,7 @@ async function askAssistant(form: HTMLFormElement) {
       body: JSON.stringify({ prompt, history }),
     });
     if (!res.ok) {
-      if (res.status === 401) location.href = "/login";
+      if (res.status === 401) signIn();
       const error = (await res.json().catch(() => null)) as {
         error?: string;
       } | null;
@@ -379,7 +384,7 @@ async function submit(form: HTMLFormElement) {
     id = form.dataset.id;
   await api(
     type + (id ? "/" + id : ""),
-    id ? "PATCH" : "POST",
+    form.dataset.method || (id ? "PATCH" : "POST"),
     type === "files" ? await withThumbnail(new FormData(form)) : values,
   );
   el.dialog.close();
@@ -445,13 +450,31 @@ el.main.addEventListener("change", (event) => {
     render();
   }
 });
-// The search box keeps focus and caret because lit only patches what changed.
+// The search box keeps focus and caret because lit only patches what changed; fast typing renders once per frame.
+let searchFrame = 0;
 el.main.addEventListener("input", (event) => {
   const input = event.target as HTMLInputElement;
   if (input.id === "search") {
     app.query = input.value;
-    render();
+    cancelAnimationFrame(searchFrame);
+    searchFrame = requestAnimationFrame(render);
   }
+});
+/** Closing a form someone has edited asks first, so a stray Esc or click keeps their typing. */
+const keepEdits = () =>
+  editorChanged() && !confirm("Discard the changes in this form?");
+function closeEditor() {
+  if (!keepEdits()) el.dialog.close();
+}
+// Esc is handled here rather than in "cancel", which browsers may skip on a repeated Esc.
+el.dialog.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && editorChanged()) {
+    event.preventDefault();
+    closeEditor();
+  }
+});
+el.dialog.addEventListener("cancel", (event) => {
+  if (keepEdits()) event.preventDefault();
 });
 // A new lease starts from the chosen property's advertised rent.
 el.editor.addEventListener("change", (event) => {

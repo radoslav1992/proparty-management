@@ -81,6 +81,13 @@ export interface Lease {
   deposit_cents: number;
   due_day: number;
   status: "active" | "ended";
+  /** 1 when partial first and last months are charged by days covered. */
+  prorate?: number;
+  /** The lease this one renews, which hands it the deposit. */
+  renewed_from?: string | null;
+  deposit_received_on?: string | null;
+  deposit_returned_cents?: number | null;
+  deposit_returned_on?: string | null;
 }
 export interface Charge {
   id: string;

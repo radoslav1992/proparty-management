@@ -563,7 +563,7 @@
   font-size: 12px;
 }
 .toolbar select {
-  max-width: 190px;
+  width: 210px;
   font-size: 12px;
 }
 .table-wrap {
@@ -573,11 +573,11 @@ table {
   border-collapse: collapse;
   width: 100%;
   text-align: left;
-  font-size: 12px;
+  font-size: 14px;
   white-space: nowrap;
 }
 th {
-  font-size: 10px;
+  font-size: 12px;
   color: #89937f;
   letter-spacing: 0.4px;
   font-weight: 500;
@@ -597,18 +597,18 @@ td strong {
 }
 td small {
   display: block;
-  font-size: 10px;
+  font-size: 12px;
   margin-top: 4px;
 }
 tr:last-child td {
   border-bottom: 0;
 }
 td .button {
-  font-size: 10px;
+  font-size: 12px;
   padding: 7px 12px;
 }
 td .icon-button {
-  font-size: 10px;
+  font-size: 12px;
   padding: 6px 8px;
 }
 .empty {
@@ -944,6 +944,20 @@ dialog::backdrop {
 .record-form textarea {
   font-size: 13px;
 }
+.record-form .check-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.check-field input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  flex: none;
+  accent-color: var(--green);
+}
 .form-actions {
   display: flex;
   justify-content: flex-end;
@@ -985,6 +999,17 @@ dialog::backdrop {
   object-fit: cover;
   border-radius: 10px;
 }
+.detail-heading {
+  font-size: 17px;
+  margin: 30px 0 12px;
+}
+.detail-note {
+  font-size: 13px;
+  color: #66715e;
+}
+.loading.compact {
+  padding: 30px 20px;
+}
 .detail-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1012,7 +1037,9 @@ dialog::backdrop {
 }
 .action-inline {
   display: inline-flex;
+  flex-wrap: wrap;
   gap: 6px;
+  width: 180px;
 }
 .alert {
   padding: 14px 18px;
@@ -1270,7 +1297,8 @@ dialog::backdrop {
   gap: 12px 16px;
   margin-bottom: 24px;
 }
-dialog:has(.statement) {
+dialog:has(.statement),
+dialog:has(.property-history) {
   width: min(820px, calc(100vw - 28px));
 }
 @media print {
@@ -1299,6 +1327,10 @@ dialog:has(.statement) {
 td.wrap {
   white-space: normal;
   min-width: 260px;
+}
+td.note {
+  white-space: normal;
+  min-width: 160px;
 }
 .data-actions {
   display: flex;

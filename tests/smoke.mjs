@@ -53,7 +53,7 @@ try {
     await go(view);
   await go("properties");
   await act("property-detail");
-  await seen("#editor[open] h2#editor-title");
+  await seen("#editor[open] .property-totals");
   await page.keyboard.press("Escape");
   await go("rent");
   await seen(".arrears");
@@ -64,11 +64,22 @@ try {
   // A new account, from first property to an ended lease.
   await page.goto(base + "/signup");
   await page.fill("[name=name]", "Smoke Test");
-  await page.fill("[name=email]", `smoke-${Date.now()}@example.com`);
+  const email = `smoke-${Date.now()}@example.com`;
+  await page.fill("[name=email]", email);
   await page.fill("[name=password]", "A valid test password 123");
   await page.click("button[type=submit]");
   await page.waitForURL("**/app");
   await seen(".stat-grid");
+
+  // Esc on an edited form asks first; declining keeps the typing.
+  await act("new-properties");
+  await page.fill("#editor [name=name]", "Half-typed");
+  page.once("dialog", (d) => d.dismiss());
+  await page.keyboard.press("Escape");
+  assert.equal(await page.inputValue("#editor [name=name]"), "Half-typed");
+  page.once("dialog", (d) => d.accept());
+  await page.click("#editor .dialog-close button");
+  await page.waitForSelector("#editor:not([open])", { state: "attached" });
 
   await act("new-properties");
   await page.fill("#editor [name=name]", "Smoke Flat");
@@ -163,7 +174,21 @@ try {
   await seen("td:has-text('€800.00')");
   await act("end-lease");
   await save();
+  await seen(".badge:text('ended')");
+  // Renewing continues the ended lease from the next day; the old one keeps its history.
+  await act("renew-lease");
+  await page.fill("#editor [name=rent]", "820");
+  await save();
+  await seen("td small:text('Renewal')");
+  await seen("td:has-text('€820.00')");
   await seen("text=History retained");
+
+  // The property's own history lists its lease and rent, loaded from the server.
+  await go("properties");
+  await act("property-detail");
+  await seen("#editor[open] .property-totals");
+  await seen("#editor[open] td strong:text('Smoke Tenant')");
+  await page.keyboard.press("Escape");
 
   await go("activity");
   await seen("td:has-text('Payment reversed')");
@@ -203,7 +228,21 @@ try {
   await page.click("#password-form button[type=submit]");
   await seen("#password-form .form-message:text('incorrect')");
 
+  // Signed out, a workspace link leads through sign-in and back to that view.
+  await page.context().clearCookies();
+  await page.goto(base + "/app?view=reports");
+  await page.waitForURL("**/login?next=%2Fapp%3Fview%3Dreports");
+  await page.fill("[name=email]", email);
+  await page.fill("[name=password]", "A valid test password 123");
+  await page.click("button[type=submit]");
+  await page.waitForURL("**/app?view=reports");
+  await seen("td strong:text('Smoke Flat')");
+  // Signed in, the sign-in page goes straight to the workspace.
+  await page.goto(base + "/login");
+  await page.waitForURL("**/app");
+
   // Finally the new account deletes itself.
+  await go("settings");
   await act("delete-account");
   await page.fill("#editor [name=password]", "A valid test password 123");
   await page.fill("#editor [name=confirm]", "DELETE");

@@ -44,6 +44,6 @@ export async function handleApi(ctx: APIContext) {
     if (found.route.public) throw new HttpError(500, "Unreachable.");
     return await found.route.handler(userContext(base, user), found.params);
   } catch (err) {
-    return errorResponse(err);
+    return errorResponse(err, ctx);
   }
 }

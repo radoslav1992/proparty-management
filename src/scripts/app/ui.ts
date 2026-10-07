@@ -131,6 +131,16 @@ export const field = (
       accept=${ifDefined(o.accept)}
       autocomplete=${ifDefined(o.autocomplete)}
   /></label>`;
+/** A tick box that always sends a value: "1" when ticked, otherwise the hidden "0". */
+export const checkbox = (label: string, name: string, checked = false) =>
+  html`<label class="check-field"
+    ><input type="hidden" name=${name} value="0" /><input
+      type="checkbox"
+      name=${name}
+      value="1"
+      ?checked=${checked}
+    />${label}</label
+  >`;
 export const area = (label: string, name: string, value = "") =>
   html`<label
     >${label}<textarea name=${name} maxlength="5000" .value=${value}></textarea>

@@ -12,7 +12,7 @@ const EXPORT_QUERIES = {
   tenants:
     "SELECT id,name,email,phone,notes,created_at,updated_at FROM tenants WHERE user_id=?",
   leases:
-    "SELECT id,property_id,tenant_id,start_date,end_date,rent_cents,deposit_cents,due_day,status,created_at,updated_at FROM leases WHERE user_id=?",
+    "SELECT id,property_id,tenant_id,start_date,end_date,rent_cents,deposit_cents,due_day,status,prorate,renewed_from,deposit_received_on,deposit_returned_cents,deposit_returned_on,created_at,updated_at FROM leases WHERE user_id=?",
   charges:
     "SELECT id,lease_id,month,due_date,amount_cents,paid_cents,voided,updated_at FROM charges WHERE user_id=?",
   payments:

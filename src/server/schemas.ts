@@ -142,6 +142,8 @@ export const tenantInput = z.object({
   phone: optional("Phone", 60),
   notes: optional("Notes", 3000),
 });
+/** A checkbox sends "1" when ticked; the form's hidden "0" stands for unticked. */
+const flag = (v: unknown) => (v === true || v === 1 || v === "1" ? 1 : 0);
 export const leaseCreateInput = z
   .object({
     property_id: recordId,
@@ -151,6 +153,7 @@ export const leaseCreateInput = z
     rent: check((v) => money(v)),
     deposit: check((v) => money(v || 0, true)),
     due_day: check((v) => integer(v, 1, 28)),
+    prorate: check(flag),
   })
   .refine((l) => l.end_date >= l.start_date, {
     message: "Lease end must be after its start.",
@@ -172,6 +175,7 @@ export const leaseUpdateInput = z
     rent: ifPresent((v) => money(v)),
     deposit: ifPresent((v) => money(v || 0, true)),
     due_day: ifPresent((v) => integer(v, 1, 28)),
+    prorate: ifPresent(flag),
   })
   .transform(({ rent, deposit, ...rest }) => {
     const values = { ...rest, rent_cents: rent, deposit_cents: deposit };
@@ -181,6 +185,34 @@ export const leaseUpdateInput = z
       [K in keyof typeof values]: NonNullable<(typeof values)[K]>;
     }>;
   });
+export const leaseRenewInput = z
+  .object({
+    end_date: check(date),
+    rent: check((v) => money(v)),
+  })
+  .transform(({ rent, ...rest }) => ({ ...rest, rent_cents: rent }));
+const optionalDate = check((v) => (v ? date(v) : null));
+export const depositInput = z
+  .object({
+    received_on: optionalDate,
+    returned: check((v) => (v === "" || v == null ? null : money(v, true))),
+    returned_on: optionalDate,
+  })
+  .refine((d) => (d.returned === null) === (d.returned_on === null), {
+    message: "Enter both the amount returned and the date, or neither.",
+  })
+  .refine((d) => d.returned_on === null || d.received_on !== null, {
+    message: "Record when the deposit was received before its return.",
+  })
+  .refine(
+    (d) => !d.received_on || !d.returned_on || d.returned_on >= d.received_on,
+    { message: "The deposit cannot be returned before it was received." },
+  )
+  .transform((d) => ({
+    deposit_received_on: d.received_on,
+    deposit_returned_cents: d.returned,
+    deposit_returned_on: d.returned_on,
+  }));
 export const paymentInput = z
   .object({
     charge_id: recordId,

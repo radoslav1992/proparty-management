@@ -7,7 +7,11 @@ const {
   description = "Manage your properties, tenants, rent and maintenance in one calm workspace.",
   app = false,
   motion = false,
+  // Public pages get a canonical link and link-preview tags; the workspace and error pages do not.
+  share = !app,
 } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.url.origin).href;
+const image = new URL("/images/ns-img-223.webp", Astro.url.origin).href;
 ---
 
 <!doctype html>
@@ -21,6 +25,23 @@ const {
     <link rel="preload" href={dmSans} as="font" type="font/woff2" crossorigin />
     <title>{title}</title>
     {app && <meta name="robots" content="noindex,nofollow" />}
+    {share && (
+      <>
+        <link rel="canonical" href={canonical} />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="Proparty" />
+        <meta property="og:title" content={title} />
+        <meta property="og:description" content={description} />
+        <meta property="og:url" content={canonical} />
+        <meta property="og:image" content={image} />
+        <meta
+          property="og:image:alt"
+          content="Proparty, a calm workspace for landlords"
+        />
+        <meta name="twitter:card" content="summary_large_image" />
+      </>
+    )}
+    <slot name="head" />
   </head>
   <body class:list={{ application: app }}>
     <a class="skip-link" href="#main">

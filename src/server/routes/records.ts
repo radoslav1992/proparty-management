@@ -1,4 +1,6 @@
 import { HttpError, planFor, uid } from "../../lib/domain";
+import { addDays } from "../../lib/dates";
+import { repriceCharges } from "../../lib/jobs";
 import type { Lease } from "../../lib/types";
 import { json, readBody, type UserContext } from "../http";
 import { del, patch, post } from "../router";
@@ -8,6 +10,8 @@ import {
   tenantInput,
   leaseCreateInput,
   leaseUpdateInput,
+  leaseRenewInput,
+  depositInput,
   paymentInput,
   maintenanceInput,
   expenseInput,
@@ -156,7 +160,95 @@ export const recordRoutes = [
           )
           .bind(id, c.userId, end.slice(0, 7)),
       );
+    // A prorated first or last month changes with the dates; turning proration on or off re-prices both.
+    const prorate = values.prorate ?? lease.prorate;
+    if (
+      (values.end_date && prorate) ||
+      (values.prorate !== undefined && values.prorate !== lease.prorate)
+    )
+      statements.push(
+        repriceCharges(
+          c.db,
+          id,
+          c.userId,
+          [lease.start_date, lease.end_date, end]
+            .map((d) => d.slice(0, 7))
+            .filter((m) => m <= end.slice(0, 7)),
+        ),
+      );
     await c.db.batch(statements);
+    return json({ id });
+  }),
+  // The renewal starts the day after this lease ends, for the same property and tenant, and takes over its deposit.
+  post("leases/:id/renew", async (c, { id }) => {
+    const lease = await c.owned<Lease>("leases", id);
+    const input = parse(leaseRenewInput, await body(c));
+    const start = addDays(lease.end_date, 1);
+    if (input.end_date < start)
+      throw new HttpError(
+        400,
+        `The renewal starts on ${start}, so it must end after that.`,
+      );
+    const renewal = uid();
+    try {
+      await c.db
+        .prepare(
+          "INSERT INTO leases(id,user_id,property_id,tenant_id,start_date,end_date,rent_cents,deposit_cents,due_day,prorate,renewed_from,deposit_received_on) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        )
+        .bind(
+          renewal,
+          c.userId,
+          lease.property_id,
+          lease.tenant_id,
+          start,
+          input.end_date,
+          input.rent_cents,
+          lease.deposit_cents,
+          lease.due_day,
+          lease.prorate ?? 0,
+          id,
+          lease.deposit_received_on ?? null,
+        )
+        .run();
+    } catch (err) {
+      if (String(err).includes("UNIQUE constraint"))
+        throw new HttpError(409, "This lease has already been renewed.");
+      throw err;
+    }
+    return json({ id: renewal }, 201);
+  }),
+  // When the deposit was received, and how much of it went back to the tenant and when.
+  patch("leases/:id/deposit", async (c, { id }) => {
+    const lease = await c.owned<Lease>("leases", id);
+    const values = parse(depositInput, await body(c));
+    if (!lease.deposit_cents)
+      throw new HttpError(400, "This lease has no deposit.");
+    if ((values.deposit_returned_cents ?? 0) > lease.deposit_cents)
+      throw new HttpError(
+        400,
+        "More cannot be returned than the deposit itself.",
+      );
+    const renewed = await c.db
+      .prepare("SELECT 1 FROM leases WHERE renewed_from=? AND user_id=?")
+      .bind(id, c.userId)
+      .first();
+    if (renewed)
+      throw new HttpError(
+        400,
+        "This deposit moved to the renewed lease. Record it there.",
+      );
+    await c.db
+      .prepare(
+        "UPDATE leases SET deposit_received_on=?,deposit_returned_cents=?,deposit_returned_on=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?",
+      )
+      .bind(
+        values.deposit_received_on,
+        values.deposit_returned_cents,
+        values.deposit_returned_on,
+        id,
+        c.userId,
+      )
+      .run();
     return json({ id });
   }),
   del("leases/:id", async (c, { id }) => {

@@ -1,8 +1,12 @@
 import { defineMiddleware } from "astro:middleware";
-import { sessionToken, sessionUser } from "./lib/auth";
+import { resumeSession } from "./lib/auth";
+import { randomHex } from "./lib/crypto";
+import { logError } from "./lib/log";
+import { afterSignIn, signInFor } from "./lib/navigation";
 export const onRequest = defineMiddleware(async (context, next) => {
   const { request, url, cookies } = context;
   context.locals.user = null;
+  context.locals.requestId = request.headers.get("cf-ray") || randomHex(8);
   if (
     !["GET", "HEAD", "OPTIONS"].includes(request.method) &&
     url.pathname !== "/api/billing/webhook"
@@ -13,22 +17,32 @@ export const onRequest = defineMiddleware(async (context, next) => {
         { status: 403, headers: { "Content-Type": "application/json" } },
       );
   }
-  if (url.pathname.startsWith("/app") || url.pathname.startsWith("/api/")) {
+  const signInPage = url.pathname === "/login" || url.pathname === "/signup";
+  if (
+    url.pathname.startsWith("/app") ||
+    url.pathname.startsWith("/api/") ||
+    signInPage
+  ) {
     try {
-      context.locals.user = await sessionUser(sessionToken(cookies));
-    } catch {
+      context.locals.user = await resumeSession(cookies, url);
+    } catch (err) {
+      logError(context, "Session lookup failed", err);
       return new Response(
         JSON.stringify({
-          error:
-            "Database unavailable. Apply D1 migrations before using the application.",
+          error: `Database unavailable. Apply D1 migrations before using the application. (reference ${context.locals.requestId})`,
+          requestId: context.locals.requestId,
         }),
         { status: 503, headers: { "Content-Type": "application/json" } },
       );
     }
     if (url.pathname.startsWith("/app") && !context.locals.user)
-      return context.redirect("/login");
+      return context.redirect(signInFor(url.pathname + url.search));
+    if (signInPage && context.locals.user)
+      return context.redirect(afterSignIn(url.searchParams.get("next")));
   }
   const response = await next();
+  if (url.pathname.startsWith("/api/"))
+    response.headers.set("X-Request-Id", context.locals.requestId);
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("X-Frame-Options", "DENY");

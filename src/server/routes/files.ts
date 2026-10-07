@@ -56,7 +56,9 @@ export const fileRoutes = [
   }),
   post("files", async (c) => {
     c.requireVerifiedEmail();
-    const length = Number(c.request.headers.get("content-length") || 0);
+    // The declared size is checked before the body is read; without one the whole upload would be buffered first.
+    const length = Number(c.request.headers.get("content-length"));
+    if (!length) throw new HttpError(411, "The upload must declare its size.");
     if (length > MAX_BYTES + 1024 * 1024)
       throw new HttpError(413, "Maximum file size is 10 MB.");
     const form = await c.request.formData();

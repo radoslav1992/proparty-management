@@ -6,6 +6,7 @@ import {
   tenantInput,
   leaseCreateInput,
   leaseUpdateInput,
+  depositInput,
   maintenanceInput,
   registerInput,
   settingsInput,
@@ -78,7 +79,9 @@ test("leases check their dates and accept partial updates", () => {
     due_day: 5,
     rent_cents: 90000,
     deposit_cents: 0,
+    prorate: 0,
   });
+  assert.equal(parse(leaseCreateInput, { ...lease, prorate: "1" }).prorate, 1);
   assert.throws(
     () => parse(leaseCreateInput, { ...lease, end_date: "2025-12-31" }),
     /end must be after its start/,
@@ -90,6 +93,38 @@ test("leases check their dates and accept partial updates", () => {
     due_day: 3,
     rent_cents: 87500,
   });
+  assert.deepEqual(parse(leaseUpdateInput, { prorate: "0" }), { prorate: 0 });
+});
+test("deposit records need a receipt before a return, and both return fields", () => {
+  assert.deepEqual(
+    parse(depositInput, { received_on: "", returned: "", returned_on: "" }),
+    {
+      deposit_received_on: null,
+      deposit_returned_cents: null,
+      deposit_returned_on: null,
+    },
+  );
+  assert.deepEqual(
+    parse(depositInput, {
+      received_on: "2026-01-01",
+      returned: "0",
+      returned_on: "2027-01-10",
+    }),
+    {
+      deposit_received_on: "2026-01-01",
+      deposit_returned_cents: 0,
+      deposit_returned_on: "2027-01-10",
+    },
+  );
+  for (const [body, message] of [
+    [{ received_on: "2026-01-01", returned: "10" }, /both/],
+    [{ returned: "10", returned_on: "2027-01-10" }, /received/],
+    [
+      { received_on: "2027-02-01", returned: "10", returned_on: "2027-01-10" },
+      /before it was received/,
+    ],
+  ] as const)
+    assert.throws(() => parse(depositInput, body), message);
 });
 test("new maintenance issues default to open", () => {
   assert.equal(

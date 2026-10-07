@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 // Starts the built Worker on its own port, runs test files against it in order, then stops it.
 async function run(files, port, inspectorPort, vars = {}) {
   const worker = spawn(
@@ -64,6 +64,18 @@ async function run(files, port, inspectorPort, vars = {}) {
     worker.kill("SIGTERM");
   }
 }
+// Sign-in limits are per IP and last 15 minutes, so back-to-back local runs would trip them.
+execFileSync(process.execPath, [
+  "node_modules/wrangler/bin/wrangler.js",
+  "d1",
+  "execute",
+  "proparty-management",
+  "--local",
+  "--persist-to",
+  process.cwd() + "/.wrangler/state",
+  "--command",
+  "DELETE FROM rate_limits",
+]);
 const results = [
   await run(["tests/integration.mjs", "tests/smoke.mjs"], 8891, 9340),
   // A placeholder email provider turns on verification; sends fail in the background and are only logged.

@@ -108,8 +108,8 @@ export function rent() {
     </div>
     <p class="month-caption">
       This month's charges are created automatically each day for active leases.
-      Generate other months here; it is safe to repeat. Charges use the full
-      lease rent; partial months are not prorated.
+      Generate other months here; it is safe to repeat. Partial first and last
+      months are charged in full unless the lease prorates them.
     </p>
     ${
       f.charges.length

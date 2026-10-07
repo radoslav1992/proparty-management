@@ -34,7 +34,7 @@ Run these commands in a terminal from the repository root. Authenticate with `np
 
 Run `npm run db:remote` again whenever a release adds a numbered migration (for example `0002_indexes.sql`). Wrangler applies only the migrations not yet recorded in the database. Never edit a migration that has already been applied; add a new numbered file instead.
 
-**Apply new migrations before deploying the code that ships with them.** From `0003` on, the code reads columns those migrations add (`email_verified_at`, `voided`, `locale`, `has_thumb`, `updated_at`); deployed first, signed-in requests fail until the migrations run. Every migration is additive, so running them ahead of the code is safe. The safest setup is the combined deploy command in step 3.
+**Apply new migrations before deploying the code that ships with them.** From `0003` on, the code reads columns those migrations add (`email_verified_at`, `voided`, `locale`, `has_thumb`, `updated_at`, `sessions.created_at`, and the lease `prorate`, `renewed_from` and deposit columns); deployed first, signed-in requests fail until the migrations run. Every migration is additive, so running them ahead of the code is safe. The safest setup is the combined deploy command in step 3.
 
 ### Recovering from an incomplete console import
 
@@ -68,11 +68,15 @@ For an existing, pinned D1 database, use `npm run db:remote && npx wrangler depl
 
 `wrangler.jsonc` registers a Cron Trigger (`17 3 * * *`, 03:17 UTC) handled by `src/worker.ts`. Each run creates the current month's rent charge for every active lease, ends leases whose last day has passed, and deletes expired sessions, rate-limit counters, reset and confirmation tokens, AI usage older than 30 days and Stripe event ids older than 30 days. It deploys with the Worker; nothing needs setting up in the dashboard. Check runs under the Worker's Settings → Trigger Events.
 
+### Logs
+
+Workers Logs are on (`observability` in `wrangler.jsonc`). Each failure is logged as one JSON line with `requestId` (the Cloudflare Ray ID), method, path and user id. API responses carry the same id in an `X-Request-Id` header, and server errors quote it to the user as "reference …", so a reported problem can be found in the logs. A failed daily job is logged with its cron and shows as failed under Trigger Events.
+
 CLI deployment: `npm run deploy`.
 
 ## 4. Variables and secrets
 
-No session-signing key is needed: 32-byte random session tokens are stored only as SHA-256 hashes in D1, with HttpOnly cookies and a seven-day expiry. Astro's separate KV session feature is disabled; there is no KV resource to configure.
+No session-signing key is needed: 32-byte random session tokens are stored only as SHA-256 hashes in D1, with HttpOnly cookies. A session ends after seven days without use and 30 days after sign-in at the latest. Passwords are PBKDF2-SHA256 hashes stored with their parameters (`pbkdf2-sha256$iterations$salt$hash`); hashes in the older format are rewritten at the user's next sign-in. Astro's separate KV session feature is disabled; there is no KV resource to configure.
 
 Set variables in Worker Settings → Variables and Secrets. `keep_vars: true` preserves dashboard variables across builds.
 
@@ -133,11 +137,11 @@ Run `npm run test:integration` for the complete local suite. Its runner starts t
 
 ## Product boundaries
 
-Rent payments are entered manually; this release does not collect tenant payments or connect to banks. The daily job creates the current month's charge for each active lease; other months are generated from the rent ledger. Generation is idempotent per lease/month. First/last partial months use the full monthly rent (no automatic prorating), and due dates are moved inside the lease's start and end dates. Due days are 1–28. Unpaid charges can be edited or removed (removed charges are kept as voided and never regenerated). Leases can be edited and ended on a chosen date; ending early deletes later unpaid charges. A property can hold several active leases as long as their dates do not overlap, so the next tenant can be entered in advance.
+Rent payments are entered manually; this release does not collect tenant payments or connect to banks. The daily job creates the current month's charge for each active lease; other months are generated from the rent ledger. Generation is idempotent per lease/month. Partial first and last months use the full monthly rent unless the lease is set to prorate, in which case they are charged by the share of the month's days the lease covers; changing a prorating lease's end date re-prices that month's unpaid charge. Due dates are moved inside the lease's start and end dates. Due days are 1–28. Unpaid charges can be edited or removed (removed charges are kept as voided and never regenerated). Leases can be edited and ended on a chosen date; ending early deletes later unpaid charges. A property can hold several active leases as long as their dates do not overlap, so the next tenant can be entered in advance. A lease can be renewed once: the renewal starts the day after it ends, keeps the property, tenant, due day and proration, may change the rent, and takes over the deposit. Each lease records when its deposit was received and how much was returned, and when. Late fees are not calculated.
 
 The assistant uses a bounded account-only snapshot of properties, recent charges and open maintenance, plus the last six messages of the conversation. Answers stream to the browser and are shown as a small, escaped Markdown subset. It does not receive uploaded documents, perform writes, send messages, or supply legal/tax advice. AI costs are limited by daily atomic D1 quotas; a request that fails before the answer starts refunds the quota.
 
-The workspace loads the last 24 months of payments, charges and expenses plus every unpaid charge, and fetches older months when a user picks them; tenant statements always use the full history. Payments, charges and leases are recorded in an append-only `audit_log` (shown under Activity, included in the data export).
+The workspace loads the last 24 months of payments, charges and expenses plus every unpaid charge, and fetches older months when a user picks them; tenant statements and the property detail's rent history always use the full history. Payments, charges and leases are recorded in an append-only `audit_log` (shown under Activity, included in the data export).
 
 The demo is read-only and separate from real account data. New accounts start empty. R2 files are limited to JPEG/PNG/WebP/PDF, 10 MB each, 30 per property. Photos get a thumbnail made in the browser (at most 640 px wide, without camera metadata) stored beside the original as `<key>.thumb`; originals are kept unchanged. Interface text is English; the date and number format is a per-user setting.
 

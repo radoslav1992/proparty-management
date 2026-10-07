@@ -26,3 +26,8 @@ export function monthLabel(
     );
   return label;
 }
+/** The calendar date `n` days after an ISO date. */
+export const addDays = (d: string, n: number) =>
+  new Date(Date.parse(d.slice(0, 10) + "T00:00:00Z") + n * 864e5)
+    .toISOString()
+    .slice(0, 10);

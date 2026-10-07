@@ -13,17 +13,20 @@ import {
   demo,
   el,
   lease,
+  leaseState,
   property,
   sum,
   tenant,
   today,
 } from "./state";
+import { addDays } from "../../lib/dates";
 import {
   area,
   arrow,
   badge,
   btn,
   cash,
+  checkbox,
   dateLabel,
   field,
   monthLabel,
@@ -33,13 +36,26 @@ import {
   toast,
 } from "./ui";
 
-let modalKey = 0;
+let modalKey = 0,
+  opened = "";
+/** Every field of the dialog's forms as text, to tell whether anything was edited. */
+const formState = () =>
+  [...el.editor.querySelectorAll("form")]
+    .map((form) =>
+      [...new FormData(form)]
+        .map(([k, v]) => `${k}=${v instanceof File ? v.name + v.size : v}`)
+        .join("&"),
+    )
+    .join("|");
 /** Each dialog gets fresh DOM, so values typed into a cancelled form never come back. */
 export function openModal(content: TemplateResult) {
   render(keyed(++modalKey, content), el.editor);
+  opened = formState();
   if (!el.dialog.open) el.dialog.showModal();
   return modalKey;
 }
+/** Whether a form in the dialog differs from how it opened. */
+export const editorChanged = () => el.dialog.open && formState() !== opened;
 const intro = (title: string, description: string, cls = "") =>
   html`<div class="editor-heading ${cls}">
     <h2 id="editor-title">${title}</h2>
@@ -51,12 +67,19 @@ function recordForm(o: {
   description: string;
   record: string;
   id?: string;
+  /** Defaults to PATCH with an id and POST without. */
+  method?: "POST" | "PATCH";
   submit: string;
   fields: unknown;
 }) {
   openModal(
     html`${intro(o.title, o.description)}
-      <form class="record-form" data-record=${o.record} data-id=${o.id ?? ""}>
+      <form
+        class="record-form"
+        data-record=${o.record}
+        data-id=${o.id ?? ""}
+        data-method=${o.method ?? ""}
+      >
         ${o.fields}
         <div class="form-message" role="alert"></div>
         <div class="form-actions">
@@ -170,6 +193,11 @@ export function leaseForm(id = "") {
             min: r.start_date,
           })}
         </div>
+        ${checkbox(
+          "Charge partial first and last months by the days covered",
+          "prorate",
+          !!r.prorate,
+        )}
         <small
           >New rent applies to charges generated from now on; edit existing
           charges in the Rent ledger. Unpaid charges after a shortened end date
@@ -215,9 +243,12 @@ export function leaseForm(id = "") {
         type: "number",
         min: 1,
         max: 28,
-      })}<small
-        >Charges use full monthly rent, including first and last months. You can
-        add the next tenant's lease before the current one ends, as long as the
+      })}${checkbox(
+        "Charge partial first and last months by the days covered",
+        "prorate",
+      )}<small
+        >Without this, first and last months are charged in full. You can add
+        the next tenant's lease before the current one ends, as long as the
         dates do not overlap.</small
       >`,
   });
@@ -238,9 +269,88 @@ export function endLeaseForm(id: string) {
         "end_date",
         last < l.start_date ? l.start_date : last,
         { type: "date", min: l.start_date, max: l.end_date },
+      )}${checkbox(
+        "Charge the final month by the days covered",
+        "prorate",
+        !!l.prorate,
       )}<small
         >Charges and payments so far are kept. Unpaid charges for months after
         this date are removed, and no new ones are generated.</small
+      >`,
+  });
+}
+
+/** The day before the same date a year later: a one-year term. */
+const yearFrom = (start: string) => {
+  const [y, m, d] = start.split("-").map(Number);
+  return new Date(Date.UTC(y + 1, m - 1, d - 1)).toISOString().slice(0, 10);
+};
+export function renewLeaseForm(id: string) {
+  const l = lease(id);
+  if (!l) return;
+  const start = addDays(l.end_date, 1);
+  recordForm({
+    title: "Renew this lease",
+    description: `${property(l.property_id)?.name} · ${tenant(l.tenant_id)?.name} · from ${dateLabel(start)}`,
+    record: "leases",
+    id: l.id + "/renew",
+    method: "POST",
+    submit: "Renew lease",
+    fields: html`<div class="form-grid">
+        ${field(`Monthly rent (${currency()})`, "rent", l.rent_cents / 100, {
+          type: "number",
+          min: 0.01,
+          step: "0.01",
+        })}${field("New end date", "end_date", yearFrom(start), {
+          type: "date",
+          min: start,
+        })}
+      </div>
+      <small
+        >The renewal keeps the property, tenant, due day and
+        proration${l.deposit_cents ? ", and the deposit moves to it" : ""}. A
+        new rent applies to the renewal only.</small
+      >`,
+  });
+}
+
+export function depositForm(id: string) {
+  const l = lease(id);
+  if (!l) return;
+  recordForm({
+    title: "Deposit",
+    description: `${property(l.property_id)?.name} · ${tenant(l.tenant_id)?.name} · ${cash(l.deposit_cents)} agreed`,
+    record: "leases",
+    id: l.id + "/deposit",
+    submit: "Save deposit",
+    fields: html`${field(
+        "Received on",
+        "received_on",
+        l.deposit_received_on ?? "",
+        { type: "date", required: false },
+      )}
+      <div class="form-grid">
+        ${field(
+          `Returned (${currency()})`,
+          "returned",
+          l.deposit_returned_cents == null
+            ? ""
+            : l.deposit_returned_cents / 100,
+          {
+            type: "number",
+            min: 0,
+            max: l.deposit_cents / 100,
+            step: "0.01",
+            required: false,
+          },
+        )}${field("Returned on", "returned_on", l.deposit_returned_on ?? "", {
+          type: "date",
+          required: false,
+        })}
+      </div>
+      <small
+        >Leave the return empty while you hold the deposit. Enter 0 if all of it
+        was kept, for example for repairs.</small
       >`,
   });
 }
@@ -389,14 +499,121 @@ export function fileForm(propertyId = "") {
   });
 }
 
-export function propertyDetail(id: string) {
+interface PropertyHistory {
+  charges: (StatementCharge & { tenant: string; last_paid: string | null })[];
+  expenses: { total_cents: number; count: number };
+}
+/** The same shape the history endpoint returns, built from the demo's local data. */
+function localPropertyHistory(propertyId: string): PropertyHistory {
+  const leases = app.data.leases.filter((l) => l.property_id === propertyId);
+  const expenses = app.data.expenses.filter(
+    (e) => e.property_id === propertyId,
+  );
+  return {
+    charges: app.data.charges
+      .filter((c) => leases.some((l) => l.id === c.lease_id))
+      .map((c) => ({
+        ...c,
+        property: property(propertyId)?.name ?? "",
+        tenant: tenant(lease(c.lease_id)?.tenant_id ?? "")?.name ?? "",
+        last_paid:
+          app.data.payments
+            .filter((p) => p.charge_id === c.id)
+            .map((p) => p.paid_date)
+            .sort()
+            .at(-1) ?? null,
+      }))
+      .sort(
+        (a, b) =>
+          b.month.localeCompare(a.month) ||
+          b.due_date.localeCompare(a.due_date),
+      ),
+    expenses: {
+      total_cents: sum(expenses, (e) => e.amount_cents),
+      count: expenses.length,
+    },
+  };
+}
+const leaseHistory = (propertyId: string) => {
+  const leases = app.data.leases
+    .filter((l) => l.property_id === propertyId)
+    .sort((a, b) => b.start_date.localeCompare(a.start_date));
+  return leases.length
+    ? table(
+        ["Tenant", "Term", "Monthly rent", "Status"],
+        leases.map(
+          (l) =>
+            html`<tr>
+              <td><strong>${tenant(l.tenant_id)?.name ?? "—"}</strong></td>
+              <td>
+                ${dateLabel(l.start_date)}<small
+                  >to ${dateLabel(l.end_date)}</small
+                >
+              </td>
+              <td>${cash(l.rent_cents)}</td>
+              <td>${badge(leaseState(l))}</td>
+            </tr>`,
+        ),
+      )
+    : html`<p class="detail-note">No leases yet.</p>`;
+};
+const rentHistory = (history: PropertyHistory | Error | null) => {
+  if (!history)
+    return html`<div class="loading compact">
+      <span class="spinner"></span>Loading rent history…
+    </div>`;
+  if (history instanceof Error)
+    return html`<p class="detail-note">
+      The rent history could not be loaded: ${history.message}
+    </p>`;
+  const charged = sum(history.charges, (c) => c.amount_cents),
+    collected = sum(history.charges, (c) => c.paid_cents);
+  return html`${
+      history.charges.length
+        ? table(
+            ["Month", "Tenant", "Charged", "Paid", "Last payment", "Balance"],
+            history.charges.map(
+              (c) =>
+                html`<tr>
+                  <td>
+                    ${monthLabel(c.month, { month: "short", year: "numeric" })}
+                  </td>
+                  <td>${c.tenant}</td>
+                  <td>${cash(c.amount_cents)}</td>
+                  <td>${cash(c.paid_cents)}</td>
+                  <td>${c.last_paid ? dateLabel(c.last_paid) : "—"}</td>
+                  <td>
+                    <strong>${cash(c.amount_cents - c.paid_cents)}</strong>
+                  </td>
+                </tr>`,
+            ),
+          )
+        : html`<p class="detail-note">No rent charges yet.</p>`
+    }
+    <div class="detail-info property-totals">
+      <div>
+        <small>Rent charged, all time</small><strong>${cash(charged)}</strong>
+      </div>
+      <div><small>Collected</small><strong>${cash(collected)}</strong></div>
+      <div>
+        <small>Expenses (${history.expenses.count})</small
+        ><strong>${cash(history.expenses.total_cents)}</strong>
+      </div>
+      <div>
+        <small>Collected less expenses</small
+        ><strong>${cash(collected - history.expenses.total_cents)}</strong>
+      </div>
+    </div>`;
+};
+/** A property's details, photos and documents, its leases, and its rent history loaded in full from the server. */
+export async function propertyDetail(id: string) {
   const p = property(id);
   if (!p) return;
   const l = activeLease(id),
     t = l && tenant(l.tenant_id);
   const files = app.data.files.filter((f) => f.property_id === id);
-  openModal(
-    html`${intro(p.name, `${p.address}, ${p.city}`)}
+  const view = (history: PropertyHistory | Error | null) =>
+    html`${intro(p.name, `${p.address}, ${p.city}`, "property-history")}
       ${badge(l ? "Occupied" : "Vacant", l ? "green" : "vacant")}
       <div class="detail-info">
         <div>
@@ -450,8 +667,24 @@ export function propertyDetail(id: string) {
           id,
           "button small outline danger",
         )}
-      </div>`,
-  );
+      </div>
+      <h3 class="detail-heading">Leases</h3>
+      ${leaseHistory(id)}
+      <h3 class="detail-heading">Rent history</h3>
+      ${rentHistory(history)}`;
+  const key = openModal(view(demo ? localPropertyHistory(id) : null));
+  if (demo) return;
+  let history: PropertyHistory | Error;
+  try {
+    history = (await api(
+      `properties/${encodeURIComponent(id)}/history`,
+    )) as PropertyHistory;
+  } catch (err) {
+    history = err as Error;
+  }
+  // Patched in place, so scrolling and focus stay where they are; skipped if the user has moved on.
+  if (el.dialog.open && modalKey === key)
+    render(keyed(key, view(history)), el.editor);
 }
 
 interface StatementCharge {

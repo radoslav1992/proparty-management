@@ -82,9 +82,21 @@ export function describe(entry: AuditEntry): [string, number | undefined] {
       ];
     case "lease:created":
       return [
-        `Lease created · ${who} · ${dateLabel(String(d.start_date))} to ${dateLabel(String(d.end_date))}`,
+        `${d.renewal ? "Lease renewed" : "Lease created"} · ${who} · ${dateLabel(String(d.start_date))} to ${dateLabel(String(d.end_date))}${d.prorate ? " · partial months prorated" : ""}`,
         Number(d.rent_cents),
       ];
+    case "lease:deposit":
+      if (d.returned_on)
+        return [
+          `Deposit returned · ${who} · ${dateLabel(String(d.returned_on))}`,
+          Number(d.returned_cents),
+        ];
+      return d.received_on
+        ? [
+            `Deposit received · ${who} · ${dateLabel(String(d.received_on))}`,
+            Number(d.deposit_cents),
+          ]
+        : [`Deposit record cleared · ${who}`, undefined];
     case "lease:changed": {
       const changes = [
         d.rent_cents !== d.old_rent_cents &&

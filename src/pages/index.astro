@@ -1,28 +1,30 @@
 ---
 import Base from "../layouts/Base.astro";
-const features = [
+import FeatureMock from "../components/FeatureMock.astro";
+type FeatureKind = "rent" | "repairs" | "lease" | "cashflow" | "assistant";
+const features: [FeatureKind, string, string][] = [
   [
-    "226",
+    "rent",
     "Rent, without the guesswork",
     "Generate monthly rent charges, record full or partial payments, and see exactly what is outstanding.",
   ],
   [
-    "227",
+    "repairs",
     "Repairs that keep moving",
     "Capture maintenance issues, set priorities, assign a contact and follow each job through to resolution.",
   ],
   [
-    "228",
+    "lease",
     "Every lease in its place",
     "Keep tenant details, rental dates, deposits and property documents connected.",
   ],
   [
-    "229",
+    "cashflow",
     "Know your real cash flow",
     "Track expenses alongside collected rent. Export a monthly statement for every property.",
   ],
   [
-    "230",
+    "assistant",
     "A helpful second pair of eyes",
     "Ask your AI assistant about outstanding rent, open repairs, or a message you need to draft.",
   ],
@@ -209,16 +211,10 @@ const faqs = [
         </h2>
       </div>
       <div class="features-grid">
-        {features.map(([img, title, desc], i) => (
+        {features.map(([kind, title, desc], i) => (
           <article data-ns-animate data-delay={String((i % 3) * 0.1)}>
             <figure>
-              <img
-                src={`/images/ns-img-${img}.webp`}
-                alt={title}
-                loading="lazy"
-                width="408"
-                height="306"
-              />
+              <FeatureMock kind={kind} />
             </figure>
             <h3>{title}</h3>
             <p>{desc}</p>

@@ -400,13 +400,9 @@ button:disabled {
   border-radius: 18px;
   overflow: hidden;
   background: var(--soft);
+  container-type: inline-size;
 }
-.features-grid img {
-  width: 100%;
-  height: auto;
-  transition: transform 0.5s;
-}
-.features-grid article:hover img {
+.features-grid article:hover .mock {
   transform: scale(1.045);
 }
 .features-grid h3 {

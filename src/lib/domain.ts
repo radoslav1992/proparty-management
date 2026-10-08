@@ -90,3 +90,11 @@ export function subscriptionPlan(
 // Past-due and unpaid subscriptions map to the free plan but can still bill, so only these count as finished.
 export const subscriptionEnded = (status: string) =>
   ["canceled", "incomplete_expired"].includes(status);
+
+/** "Proparty <noreply@example.com>" or a bare address, as the sender Email Service expects. */
+export function senderAddress(value: string) {
+  const named = /^\s*(.*?)\s*<([^<>\s]+@[^<>\s]+)>\s*$/.exec(value);
+  return named
+    ? { name: named[1].replace(/^"|"$/g, "") || "Proparty", email: named[2] }
+    : { name: "Proparty", email: value.trim() };
+}

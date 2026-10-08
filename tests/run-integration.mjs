@@ -78,10 +78,10 @@ execFileSync(process.execPath, [
 ]);
 const results = [
   await run(["tests/integration.mjs", "tests/smoke.mjs"], 8891, 9340),
-  // A placeholder email provider turns on verification; sends fail in the background and are only logged.
+  // A sender address turns email on; wrangler's simulated Email Service keeps the messages for the test to read.
   await run(["tests/integration-email.mjs"], 8892, 9341, {
-    RESEND_API_KEY: "test-key",
-    EMAIL_FROM: "Proparty <test@example.com>",
+    EMAIL_FROM: "Proparty <noreply@example.com>",
+    EMAIL_REPLY_TO: "support@example.com",
   }),
 ];
 if (results.includes(false)) process.exitCode = 1;

@@ -80,17 +80,28 @@ No session-signing key is needed: 32-byte random session tokens are stored only 
 
 Set variables in Worker Settings → Variables and Secrets. `keep_vars: true` preserves dashboard variables across builds.
 
-| Name                     | Required               | Purpose                                                    |
-| ------------------------ | ---------------------- | ---------------------------------------------------------- |
-| `AI_MODEL`               | No                     | Defaults to `@cf/meta/llama-3.3-70b-instruct-fp8-fast`     |
-| `RESEND_API_KEY`         | For email              | Password-reset and email-confirmation messages             |
-| `EMAIL_FROM`             | For email              | Verified sender, e.g. `Proparty <noreply@your-domain.com>` |
-| `STRIPE_SECRET_KEY`      | For paid subscriptions | Stripe secret key                                          |
-| `STRIPE_WEBHOOK_SECRET`  | For paid subscriptions | Webhook signing secret                                     |
-| `STRIPE_PRICE_LANDLORD`  | For paid subscriptions | Monthly recurring price for the Landlord plan              |
-| `STRIPE_PRICE_PORTFOLIO` | For paid subscriptions | Monthly recurring price for the Portfolio plan             |
+| Name                     | Required               | Purpose                                                                                               |
+| ------------------------ | ---------------------- | ----------------------------------------------------------------------------------------------------- |
+| `AI_MODEL`               | No                     | Defaults to `@cf/meta/llama-3.3-70b-instruct-fp8-fast`                                                |
+| `EMAIL_FROM`             | For email              | Sender on your onboarded domain, e.g. `Proparty <noreply@your-domain.com>`; setting it turns email on |
+| `EMAIL_REPLY_TO`         | No                     | Where replies go, e.g. `support@your-domain.com` (forwarded by Email Routing)                         |
+| `STRIPE_SECRET_KEY`      | For paid subscriptions | Stripe secret key                                                                                     |
+| `STRIPE_WEBHOOK_SECRET`  | For paid subscriptions | Webhook signing secret                                                                                |
+| `STRIPE_PRICE_LANDLORD`  | For paid subscriptions | Monthly recurring price for the Landlord plan                                                         |
+| `STRIPE_PRICE_PORTFOLIO` | For paid subscriptions | Monthly recurring price for the Portfolio plan                                                        |
 
 Cloudflare's `AI` binding provides access directly. No OpenAI, Gemini, or external inference key is required. Use a Workers AI chat model that accepts the `messages` input shape; Google/OpenAI partner model shapes are not interchangeable.
+
+## Email (Cloudflare Email Service and Email Routing)
+
+Account confirmation and password-reset emails are sent by the Worker's `EMAIL` binding (`send_email` in `wrangler.jsonc`) through Cloudflare Email Service. Mail people send to your domain, such as replies, is forwarded to your own inbox by Email Routing. Both need the domain's DNS on Cloudflare.
+
+1. **Sending.** In the Cloudflare dashboard, open Email Sending (Email Service) and onboard your domain. Cloudflare adds the SPF, DKIM and DMARC records. Until the domain is onboarded, mail reaches only verified addresses in your account. Sending to any address needs the Workers Paid plan.
+2. **Forwarding.** In Email Routing, enable routing for the domain, add your own inbox as a destination address and confirm it from the email Cloudflare sends. Then create custom addresses such as `support@` and `privacy@` that forward to it.
+3. **Variables.** In Worker Settings → Variables and Secrets, add `EMAIL_FROM` (for example `Proparty <noreply@your-domain.com>`, on the onboarded domain) and `EMAIL_REPLY_TO` (for example `support@your-domain.com`). They are plain variables, not secrets.
+4. **Check.** Sign up with an address you can read and open the confirmation link, then use "Forgot password" and follow the reset link.
+
+Until `EMAIL_FROM` is set, email stays off: password recovery shows an unavailable message and new accounts are not asked to confirm their address. Once it is set, new accounts must confirm before using the AI assistant or uploads. Failed sends are logged with the request id and Email Service's error code, such as `E_SENDER_NOT_VERIFIED` (sender not on an onboarded domain), `E_RECIPIENT_NOT_ALLOWED` (plan or binding limit) or `E_RECIPIENT_SUPPRESSED` (the address bounced or complained before).
 
 ## Optional subscriptions
 
@@ -125,12 +136,12 @@ python3 tests/database.py
 npm run build
 ```
 
-Run `npm run test:integration` for the complete local suite. Its runner starts the built Worker twice with explicit ports and a shared local D1/R2 persistence directory: once for the HTTP tests and the Playwright browser smoke test (`npx playwright install chromium` first), and once with a placeholder email provider to cover email confirmation. Use a disposable local database: the tests create sample accounts and records.
+Run `npm run test:integration` for the complete local suite. Its runner starts the built Worker twice with explicit ports and a shared local D1/R2 persistence directory: once for the HTTP tests and the Playwright browser smoke test (`npx playwright install chromium` first), and once with `EMAIL_FROM` set, where Wrangler's simulated Email Service keeps each message so the test can follow the confirmation and reset links. Locally, sent emails are also printed in the Wrangler log. Use a disposable local database: the tests create sample accounts and records.
 
 ## Before opening to customers
 
 - Verify signup, sign-in, a property photo upload, and an AI question on the deployed domain.
-- Configure and verify email (`RESEND_API_KEY`, `EMAIL_FROM`). Without it, password recovery shows a clear unavailable message and email confirmation is skipped. With it, new accounts must confirm their address before using the AI assistant or uploads; accounts created before migration `0003` are treated as confirmed.
+- Set up email as described under Email above. Accounts created before migration `0003` are treated as confirmed.
 - Replace the privacy/terms overview with the operator's actual identity, contact and retention policy before commercial launch.
 - Verify Stripe with test mode first if enabling subscriptions.
 - Keep important property documents backed up independently. Users can download their data and delete their account from Settings; decide how long backups of deleted accounts are kept and say so in the privacy policy.

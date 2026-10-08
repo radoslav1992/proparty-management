@@ -8,6 +8,7 @@ import {
   integer,
   subscriptionPlan,
   subscriptionEnded,
+  senderAddress,
 } from "../src/lib/domain.ts";
 test("money preserves cents and rejects ambiguous or negative input", () => {
   assert.equal(money("850.25"), 85025);
@@ -44,4 +45,18 @@ test("past-due subscriptions still block a second checkout", () => {
   assert.equal(subscriptionEnded("unpaid"), false);
   assert.equal(subscriptionEnded("canceled"), true);
   assert.equal(subscriptionEnded("incomplete_expired"), true);
+});
+test("the sender setting accepts a display name or a bare address", () => {
+  assert.deepEqual(senderAddress("Proparty <noreply@example.com>"), {
+    name: "Proparty",
+    email: "noreply@example.com",
+  });
+  assert.deepEqual(senderAddress('"Greenhouse Rentals" <hi@example.com>'), {
+    name: "Greenhouse Rentals",
+    email: "hi@example.com",
+  });
+  assert.deepEqual(senderAddress(" noreply@example.com "), {
+    name: "Proparty",
+    email: "noreply@example.com",
+  });
 });

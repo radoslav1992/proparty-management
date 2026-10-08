@@ -1,20 +1,30 @@
 import { bindings } from "./env";
 import { digest, token } from "./auth";
+import { senderAddress } from "./domain";
+/** Email is on once the sender address is set; the EMAIL binding (Cloudflare Email Service) is declared in wrangler.jsonc. */
 export const emailConfigured = () => {
   const e = bindings();
-  return !!(e.RESEND_API_KEY && e.EMAIL_FROM);
+  return !!(e.EMAIL && e.EMAIL_FROM);
 };
 export async function sendEmail(to: string, subject: string, text: string) {
   const e = bindings();
-  const r = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + e.RESEND_API_KEY,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ from: e.EMAIL_FROM, to, subject, text }),
-  });
-  if (!r.ok) throw new Error("Email service returned " + r.status);
+  if (!e.EMAIL || !e.EMAIL_FROM) throw new Error("Email is not configured");
+  try {
+    await e.EMAIL.send({
+      from: senderAddress(e.EMAIL_FROM),
+      to,
+      subject,
+      text,
+      ...(e.EMAIL_REPLY_TO ? { replyTo: e.EMAIL_REPLY_TO } : {}),
+    });
+  } catch (err) {
+    // Email Service errors carry a code such as E_SENDER_NOT_VERIFIED or E_RECIPIENT_SUPPRESSED.
+    const code = (err as { code?: string }).code;
+    throw new Error(
+      `Email not sent${code ? ` (${code})` : ""}: ${err instanceof Error ? err.message : "unknown"}`,
+      { cause: err },
+    );
+  }
 }
 export async function sendVerification(
   userId: string,

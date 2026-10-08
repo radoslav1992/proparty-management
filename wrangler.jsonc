@@ -18,6 +18,8 @@
     { "binding": "PROPERTY_FILES", "bucket_name": "proparty-management-files" },
   ],
   "ai": { "binding": "AI" },
+  // Cloudflare Email Service. Nothing is sent until the EMAIL_FROM variable is set (docs/DEPLOYMENT.md).
+  "send_email": [{ "name": "EMAIL" }],
   // Daily housekeeping and rent charge generation (src/lib/jobs.ts), 03:17 UTC.
   "triggers": { "crons": ["17 3 * * *"] },
   "observability": { "enabled": true },

@@ -6,8 +6,12 @@ export interface Bindings {
     run: (model: string, input: Record<string, unknown>) => Promise<unknown>;
   };
   AI_MODEL?: string;
-  RESEND_API_KEY?: string;
+  /** Cloudflare Email Service; sends only once EMAIL_FROM is set. */
+  EMAIL?: SendEmail;
+  /** Sender on a domain onboarded to Email Service, e.g. "Proparty <noreply@example.com>". */
   EMAIL_FROM?: string;
+  /** Optional address replies go to, e.g. a support@ address forwarded by Email Routing. */
+  EMAIL_REPLY_TO?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_PRICE_LANDLORD?: string;
